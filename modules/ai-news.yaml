@@ -1,0 +1,35 @@
+key: ai-news
+name: AI 行业快讯
+enabled: true
+schedule: "0 9 * * *"
+timezone: Asia/Shanghai
+lifetime: ephemeral
+max_items_per_run: 5
+dedup:
+  strategy: ttl
+  ttl_days: 3
+  cross_source: title_similarity
+  title_similarity_threshold: 0.85
+  freshness_half_life_hours: 24
+llm:
+  model: ""
+  temperature: 0.1
+  batch_size: 10
+  max_tokens: 2000
+  threshold: 60
+  profile: |
+    关注 AI 大模型、开源模型、AI 产品与重要论文。
+    优先：模型发布、重大技术突破。
+    不要：纯营销稿件、重复报道。
+filter:
+  keywords_include: ["AI", "LLM", "GPT", "Claude", "Gemini", "模型"]
+  keywords_exclude: []
+  min_content_length: 0
+  lookback_hours: 72
+sources:
+  - name: Hacker News AI
+    type: rss
+    url: https://hnrss.org/newest?q=AI
+    base_weight: 1.0
+push:
+  channels: [file]

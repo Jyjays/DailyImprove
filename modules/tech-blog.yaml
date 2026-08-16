@@ -1,0 +1,33 @@
+key: tech-blog
+name: 技术博客精选
+enabled: true
+schedule: "0 8 * * *"
+timezone: Asia/Shanghai
+lifetime: persistent
+max_items_per_run: 5
+dedup:
+  strategy: persistent
+  cross_source: title_similarity
+  title_similarity_threshold: 0.85
+  freshness_half_life_hours: 72
+llm:
+  model: ""
+  temperature: 0.1
+  batch_size: 10
+  max_tokens: 2000
+  threshold: 60
+  profile: |
+    用户关注：前端、后端、工程效率、程序员成长、计算机基础。
+    不要：广告、营销软文、与编程无关的内容。
+filter:
+  keywords_include: []
+  keywords_exclude: []
+  min_content_length: 0
+  lookback_hours: 720
+sources:
+  - name: 阮一峰的网络日志
+    type: rss
+    url: https://www.ruanyifeng.com/blog/atom.xml
+    base_weight: 1.0
+push:
+  channels: [file]

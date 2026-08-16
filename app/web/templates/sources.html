@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}来源与反馈{% endblock %}
+{% block content %}
+<h1>来源与反馈</h1>
+<p style="color:#64748b;">点击星星为来源评分：高分来源后续权重更高，低分来源权重降低。评分本地保存，不会上传。</p>
+<table>
+  <tr><th>ID</th><th>模块</th><th>来源</th><th>类型</th><th>URL</th><th>权重</th><th>评分</th><th>生效评分</th><th>最近抓取</th><th>反馈</th></tr>
+  {% for s in sources %}
+  <tr>
+    <td>{{ s.id }}</td>
+    <td>{{ s.module.key if s.module else s.module_id }}</td>
+    <td>{{ s.name }}</td>
+    <td>{{ s.type }}</td>
+    <td style="max-width:200px; word-break:break-all;">{{ s.url }}</td>
+    <td>{{ s.base_weight }}</td>
+    <td>{{ (s.rating_avg or 0.5)|round(3) }}</td>
+    <td>
+      {% set eff = (10 * 0.5 + (s.rating_count or 0) * (s.rating_avg or 0.5)) / (10 + (s.rating_count or 0)) %}
+      {{ eff|round(3) }}
+    </td>
+    <td>{{ s.last_fetch_at.strftime('%m-%d %H:%M') if s.last_fetch_at else '-' }}</td>
+    <td>
+      {% for star in range(1, 6) %}
+      <span class="star" onclick="rateSource({{ s.id }}, {{ star }})">★</span>
+      {% endfor %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+<script>
+async function rateSource(sourceId, rating) {
+  try {
+    const resp = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({source_id: sourceId, feedback_type: 'source_rating', rating: rating})
+    });
+    const data = await resp.json();
+    if (!resp.ok) { alert(JSON.stringify(data)); return; }
+    location.reload();
+  } catch (e) { alert(e); }
+}
+</script>
+{% endblock %}
