@@ -13,8 +13,11 @@ from app.config import settings
 from app.models.db import SessionLocal
 from app.models.models import Item, Module, PushRecord, RunRecord, Source
 from app.pipeline.composer import Composer
+from app.pipeline.content_fetcher import MIN_CONTENT_LEN, enrich_content
+from app.pipeline.cluster import merge_clusters
 from app.pipeline.dedup import DedupStore
 from app.pipeline.filters import DeterministicFilter
+from app.pipeline.interest import learn_top_tags
 from app.pipeline.llm_filter import LLMFilter
 from app.pipeline.normalizer import normalize
 from app.pipeline.ranker import Ranker
@@ -89,6 +92,10 @@ class ModuleRunner:
                 source.last_error = str(e)[:500]
                 logger.warning("来源 %s 抓取失败: %s", source.name, e)
                 continue
+            # 每源限流：只保留最近 max_fetch 条，控制候选规模
+            max_fetch = int((source_cfg.config or {}).get("max_fetch", 20))
+            if len(raw_items) > max_fetch:
+                raw_items = raw_items[:max_fetch]
             source.last_fetch_at = datetime.now()
             source.last_error = None
             run.fetched_count += len(raw_items)
@@ -99,6 +106,13 @@ class ModuleRunner:
                 except Exception as e:
                     logger.warning("条目标准化失败: %s", e)
                     continue
+                # 正文补全：内容过短且有 URL 时，抓网页正文供 LLM 深度总结
+                if item.url and (not item.raw_content or len(item.raw_content.strip()) < MIN_CONTENT_LEN):
+                    fetched = enrich_content(item.raw_content, item.url)
+                    if fetched and fetched != item.raw_content:
+                        item.raw_content = fetched
+                        if not item.summary:
+                            item.summary = fetched[:2000]
                 if dedup.exists(item, cfg):
                     continue
                 if dedup.cross_source_duplicate(item, cfg, existing_titles):
@@ -120,6 +134,10 @@ class ModuleRunner:
         # 2. 确定性过滤
         candidates = DeterministicFilter(cfg).filter(candidates)
 
+        # 2.5 跨源聚类合并：同一内容的多来源合并为一条
+        threshold = float((cfg.dedup or {}).get("title_similarity_threshold", 0.85))
+        candidates = merge_clusters(candidates, threshold)
+
         # 3. LLM 单轮筛选（不可用时自动回退）
         candidates = LLMFilter().filter(candidates, cfg)
 
@@ -129,7 +147,8 @@ class ModuleRunner:
             return
 
         # 4. 排序 + 选材
-        candidates = Ranker(cfg).compute_scores(candidates)
+        interest_tags = learn_top_tags(self.session, module.id)
+        candidates = Ranker(cfg, interest_tags).compute_scores(candidates)
         selected = TopNSelector(cfg).select(candidates)
         run.selected_count = len(selected)
 

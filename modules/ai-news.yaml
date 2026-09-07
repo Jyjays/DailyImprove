@@ -1,6 +1,6 @@
 key: ai-news
 name: AI 行业快讯
-enabled: true
+enabled: false                   # 与 ai-infra 模块重叠且偏新闻，停用；需要时改回 true
 schedule: "0 9 * * *"
 timezone: Asia/Shanghai
 lifetime: ephemeral
@@ -14,8 +14,8 @@ dedup:
 llm:
   model: ""
   temperature: 0.1
-  batch_size: 10
-  max_tokens: 2000
+  batch_size: 5
+  max_tokens: 8000
   threshold: 60
   profile: |
     关注 AI 大模型、开源模型、AI 产品与重要论文。

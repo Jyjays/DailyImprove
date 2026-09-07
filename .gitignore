@@ -4,3 +4,13 @@ __pycache__/
 *.pyc
 data/
 .env
+
+# 构建产物与依赖
+node_modules/
+*.tsbuildinfo
+*.egg-info/
+test1/test1/vite.config.js
+test1/test1/vite.config.d.ts
+
+# 大体积归档
+test1.rar

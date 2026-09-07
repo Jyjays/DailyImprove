@@ -72,6 +72,7 @@ class Item(Base):
     llm_score = Column(Float, nullable=True)
     final_score = Column(Float, nullable=True)
     llm_output = Column(Text, nullable=True)
+    merged_sources = Column(Text, nullable=True)
     published_at = Column(DateTime, nullable=True)
     fetched_at = Column(DateTime, default=datetime.now, nullable=False)
 
@@ -117,3 +118,43 @@ class RunRecord(Base):
     selected_count = Column(Integer, default=0)
     pushed_count = Column(Integer, default=0)
     error_msg = Column(Text, nullable=True)
+
+
+class CheckIn(Base):
+    """每日打卡记录。
+
+    状态四档（与 AGENTS.md 7.3 节一致）：
+      done    [x] 已完成
+      todo    [ ] 未做
+      partial [!] 部分完成且跨天延续
+      blocked [?] 卡住，需写清卡点
+    打卡会同时回写 plan/daily/YYYY-MM-DD.md，保证 md 仍是单一事实来源。
+    """
+    __tablename__ = "checkins"
+    __table_args__ = (UniqueConstraint("date", "category", name="uq_checkin_date_category"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(String(10), nullable=False, index=True)          # YYYY-MM-DD
+    category = Column(String(32), nullable=False)                   # ai-infra/paper/interview/drone/blocker
+    title = Column(String(255), nullable=False)                     # 打卡项标题
+    status = Column(String(16), nullable=False, default="todo")
+    note = Column(Text, nullable=True)                              # 特殊说明 / 卡点
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+
+class Course(Base):
+    """课程与学习资料。track 对应松的三条线，phase 对应 roadmap 阶段。"""
+    __tablename__ = "courses"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(255), nullable=False)
+    provider = Column(String(128), nullable=True)                   # CMU / UIUC / NVIDIA ...
+    url = Column(String(1024), nullable=True)                       # 课程主页
+    description = Column(Text, nullable=True)                       # 课程介绍
+    track = Column(String(32), nullable=False, default="ai-infra")  # ai-infra/paper/drone
+    phase = Column(String(16), nullable=True)                       # P0~P4
+    resources = Column(Text, nullable=True)                         # JSON: [{name,url,type}]
+    status = Column(String(16), nullable=False, default="未开始")     # 未开始/进行中/已完成
+    progress = Column(Integer, nullable=False, default=0)           # 0-100
+    created_at = Column(DateTime, default=datetime.now, nullable=False)

@@ -77,7 +77,7 @@ class LLMFilter:
         lines.append("")
         lines.append("候选信息列表：")
         for idx, item in enumerate(items, 1):
-            text = f"{item.title} {item.summary or ''} {item.raw_content or ''}"[:800]
+            text = f"{item.title} {item.summary or ''} {item.raw_content or ''}"[:3000]
             lines.append(
                 f"[{idx}] id={item.id} source={item.source.name if item.source else '?'} url={item.url or ''}\n"
                 f"title={item.title}\ncontent={text}\n"
@@ -85,8 +85,9 @@ class LLMFilter:
         lines.append("")
         lines.append(
             "请逐条判断，输出 JSON："
-            '{"items":[{"id":"...","relevant":true,"score":0,"summary":"<=80字中文摘要","reason":"<=30字","tags":["标签"]}]}'
-            " score 为 0-100 相关度打分。"
+            '{"items":[{"id":"...","relevant":true,"score":0,"value":0,"summary":"<=200字中文摘要","reason":"<=30字","tags":["标签"]}]}'
+            " score 为 0-100 相关度打分；value 为 0-100 价值/重要性打分（是否值得用户精读，越干货越高）。"
+            " summary 要基于正文给出有信息量的总结，不要照抄标题。"
         )
         user = "\n".join(lines)
 
@@ -136,7 +137,7 @@ class LLMFilter:
                 keep = True
             item.llm_score = float(score)
             item.llm_output = json.dumps(
-                {"relevant": keep, "score": score, "reason": "keyword fallback", "tags": []},
+                {"relevant": keep, "score": score, "value": score, "reason": "keyword fallback", "tags": []},
                 ensure_ascii=False,
             )
             if keep:

@@ -32,6 +32,7 @@ class Composer:
                     llm_score=item.llm_score,
                     final_score=item.final_score,
                     tags=llm_data.get("tags", []),
+                    merged_sources=item.merged_sources or "",
                     published_at=item.published_at,
                 )
             )

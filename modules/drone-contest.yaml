@@ -1,0 +1,48 @@
+key: drone-contest
+name: 无人机算法竞赛 · 横向
+enabled: true
+schedule: "0 9 * * wed,sat"     # 每周三、周六 09:00，只在横向时间前推
+timezone: Asia/Shanghai
+lifetime: persistent
+max_items_per_run: 4
+dedup:
+  strategy: persistent
+  cross_source: title_similarity
+  title_similarity_threshold: 0.85
+llm:
+  model: ""
+  temperature: 0.1
+  batch_size: 5
+  max_tokens: 8000
+  threshold: 55
+  profile: |
+    用户是研究生，被导师安排了一个无人机算法竞赛的横向课题，投入有限（每周约 5 小时），
+    目标是"最小可交差"：跑通 baseline + 一个改进点 + 报告，不追求名次。
+    关注：无人机/四旋翼的目标检测与跟踪、状态估计与 SLAM、路径与轨迹规划、
+    避障、MPC/强化学习控制、仿真环境（Gazebo/PX4 SITL/AirSim）、现成可复用的开源方案。
+    优先：带开源代码、能直接跑、有 benchmark 对比的工作。
+    不要：纯理论推导、需要特殊硬件才能复现的工作。
+    摘要里请点明：有没有开源代码、能不能在仿真里跑。
+filter:
+  keywords_include: ["drone", "UAV", "quadrotor", "aerial", "autonomous navigation", "path planning", "SLAM", "object tracking"]
+  keywords_exclude: []
+  min_content_length: 0
+  lookback_hours: 336
+sources:
+  - name: arXiv · 无人机与自主导航
+    type: rss
+    url: "https://export.arxiv.org/api/query?search_query=abs:%22quadrotor%22+OR+abs:%22UAV%22&start=0&max_results=40&sortBy=submittedDate&sortOrder=descending"
+    base_weight: 1.2
+    max_fetch: 20
+  - name: arXiv cs.RO 最新
+    type: rss
+    url: "http://export.arxiv.org/rss/cs.RO/"
+    base_weight: 0.8
+    max_fetch: 15
+  - name: Hacker News · 无人机
+    type: rss
+    url: "https://hnrss.org/newest?q=drone"
+    base_weight: 0.6
+    max_fetch: 10
+push:
+  channels: [file]

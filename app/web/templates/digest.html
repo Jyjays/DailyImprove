@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Digest 预览{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Digest 预览与历史</h1>
+    <p class="subtitle">最近推送的内容列表，点击标题直达原文</p>
+  </div>
+</div>
+
+{% if digests %}
+<div class="grid">
+{% for d in digests %}
+<div class="card">
+  <div class="flex" style="justify-content:space-between;">
+    <strong>{{ d.item.title }}</strong>
+    <span class="badge {{ 'ok' if d.status == 'success' else 'fail' }}">{{ d.channel }}</span>
+  </div>
+  {% if d.item.summary %}
+  <div class="summary-box">{{ d.item.summary }}</div>
+  {% endif %}
+  <div class="muted" style="font-size:13px;">
+    模块 {{ d.module.name }} · 来源 {{ d.item.source.name if d.item.source else '-' }} ·
+    <span class="mono">{{ d.pushed_at.strftime('%m-%d %H:%M') if d.pushed_at else '' }}</span>
+  </div>
+  {% if d.item.url %}
+  <div style="margin-top:8px;">
+    <a href="{{ d.item.url }}" target="_blank">阅读原文 →</a>
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+</div>
+{% else %}
+<div class="empty">暂无推送记录。先在「模块」页手动运行一次模块。</div>
+{% endif %}
+{% endblock %}

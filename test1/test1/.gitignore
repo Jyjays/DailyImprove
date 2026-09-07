@@ -1,0 +1,5 @@
+node_modules/
+.testdeps/
+dist/
+test-artifacts/
+*.log

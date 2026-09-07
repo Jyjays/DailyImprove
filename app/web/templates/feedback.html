@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}反馈{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>反馈</h1>
+    <p class="subtitle">你的反馈会调整来源权重与兴趣偏好，让后续推送更精准</p>
+  </div>
+</div>
+
+<h2>来源评分</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>来源</th><th>模块</th><th>评分</th><th>打分</th></tr>
+  {% for s in sources %}
+  <tr>
+    <td>{{ s.name }}</td>
+    <td>{{ s.module.key if s.module else s.module_id }}</td>
+    <td>{{ (s.rating_avg or 0.5)|round(3) }} <span class="muted">({{ s.rating_count or 0 }} 次)</span></td>
+    <td>
+      <span class="flex" style="gap:2px;">
+      {% for star in range(1, 6) %}
+      <span class="star {{ 'on' if ((s.rating_avg or 0.5) * 5) >= star - 0.5 else '' }}" onclick="rateSource({{ s.id }}, {{ star }})">★</span>
+      {% endfor %}
+      </span>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+
+<h2>条目反馈</h2>
+{% for it in items %}
+<div class="card">
+  <div class="flex" style="justify-content:space-between;">
+    <strong>{% if it.url %}<a href="{{ it.url }}" target="_blank">{{ it.title }}</a>{% else %}{{ it.title }}{% endif %}</strong>
+    <span class="muted">{{ it.module.key if it.module else it.module_id }} · {{ it.source.name if it.source else it.source_id }}</span>
+  </div>
+  {% if it.summary %}
+  <div class="summary-box">{{ it.summary[:200] }}</div>
+  {% endif %}
+  <div class="flex" style="margin-top:8px; gap:8px;">
+    <button class="btn secondary sm" onclick="feedbackItem({{ it.id }}, 'item_useful')">有用</button>
+    <button class="btn secondary sm" onclick="feedbackItem({{ it.id }}, 'item_useless')">无用</button>
+    <button class="btn primary sm" onclick="feedbackItem({{ it.id }}, 'save')">收藏</button>
+    <button class="btn danger sm" onclick="feedbackItem({{ it.id }}, 'ignore')">忽略</button>
+  </div>
+</div>
+{% endfor %}
+{% if not items %}
+<div class="empty">暂无待反馈条目。</div>
+{% endif %}
+
+<script>
+async function rateSource(sourceId, rating) {
+  try {
+    const resp = await fetch('/api/feedback', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({source_id: sourceId, feedback_type: 'source_rating', rating: rating})
+    });
+    if (!resp.ok) { alert(JSON.stringify(await resp.json())); return; }
+    location.reload();
+  } catch (e) { alert(e); }
+}
+async function feedbackItem(itemId, type) {
+  const btn = event.target;
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = '...';
+  try {
+    const resp = await fetch('/api/feedback', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({item_id: itemId, feedback_type: type})
+    });
+    if (!resp.ok) { alert(JSON.stringify(await resp.json())); btn.disabled = false; btn.textContent = original; return; }
+    btn.textContent = '已记录';
+  } catch (e) { alert(e); btn.disabled = false; btn.textContent = original; }
+}
+</script>
+{% endblock %}

@@ -1,8 +1,14 @@
 {% extends "base.html" %}
 {% block title %}来源与反馈{% endblock %}
 {% block content %}
-<h1>来源与反馈</h1>
-<p style="color:#64748b;">点击星星为来源评分：高分来源后续权重更高，低分来源权重降低。评分本地保存，不会上传。</p>
+<div class="page-head">
+  <div>
+    <h1>来源与反馈</h1>
+    <p class="subtitle">为来源打星：高分来源后续权重更高，低分来源权重降低。评分本地保存。</p>
+  </div>
+</div>
+
+<div class="table-wrap">
 <table>
   <tr><th>ID</th><th>模块</th><th>来源</th><th>类型</th><th>URL</th><th>权重</th><th>评分</th><th>生效评分</th><th>最近抓取</th><th>反馈</th></tr>
   {% for s in sources %}
@@ -10,23 +16,26 @@
     <td>{{ s.id }}</td>
     <td>{{ s.module.key if s.module else s.module_id }}</td>
     <td>{{ s.name }}</td>
-    <td>{{ s.type }}</td>
-    <td style="max-width:200px; word-break:break-all;">{{ s.url }}</td>
+    <td><span class="badge neutral">{{ s.type }}</span></td>
+    <td class="mono" style="max-width:220px; word-break:break-all;">{{ s.url }}</td>
     <td>{{ s.base_weight }}</td>
     <td>{{ (s.rating_avg or 0.5)|round(3) }}</td>
     <td>
       {% set eff = (10 * 0.5 + (s.rating_count or 0) * (s.rating_avg or 0.5)) / (10 + (s.rating_count or 0)) %}
       {{ eff|round(3) }}
     </td>
-    <td>{{ s.last_fetch_at.strftime('%m-%d %H:%M') if s.last_fetch_at else '-' }}</td>
+    <td class="mono">{{ s.last_fetch_at.strftime('%m-%d %H:%M') if s.last_fetch_at else '-' }}</td>
     <td>
+      <span class="flex" style="gap:2px;">
       {% for star in range(1, 6) %}
-      <span class="star" onclick="rateSource({{ s.id }}, {{ star }})">★</span>
+      <span class="star {{ 'on' if ((s.rating_avg or 0.5) * 5) >= star - 0.5 else '' }}" onclick="rateSource({{ s.id }}, {{ star }})">★</span>
       {% endfor %}
+      </span>
     </td>
   </tr>
   {% endfor %}
 </table>
+</div>
 <script>
 async function rateSource(sourceId, rating) {
   try {

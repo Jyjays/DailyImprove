@@ -44,6 +44,7 @@ class DigestItem:
     llm_score: float | None = None
     final_score: float | None = None
     tags: list[str] = field(default_factory=list)
+    merged_sources: str = ""
     published_at: datetime | None = None
 
 
@@ -68,6 +69,8 @@ class Digest:
                 lines.append(f"摘要：{it.summary}")
             if it.llm_reason:
                 lines.append(f"入选理由：{it.llm_reason}")
+            if it.merged_sources:
+                lines.append(f"另见来源：{it.merged_sources}")
             if it.tags:
                 lines.append(f"标签：{' / '.join(it.tags)}")
             lines.append("")

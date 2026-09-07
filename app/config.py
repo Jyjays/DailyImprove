@@ -46,6 +46,10 @@ class Settings:
         self.llm_api_key = _get("LLM_API_KEY", "")
         self.llm_model = _get("LLM_MODEL", "gpt-4o-mini")
         self.llm_timeout = float(_get("LLM_TIMEOUT", "60"))
+        # 推理型模型（如 deepseek-v4 系列）默认会先产出 reasoning token，
+        # 对"批量筛选 + 摘要"这类任务没有必要，且会拖慢 3 倍、吃掉输出预算。
+        # 设为 true 时请求体带上 thinking:{"type":"disabled"}。
+        self.llm_disable_thinking = _get_bool("LLM_DISABLE_THINKING", False)
 
         # Web 控制台
         self.web_host = _get("WEB_HOST", "127.0.0.1")

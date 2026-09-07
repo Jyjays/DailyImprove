@@ -11,6 +11,7 @@ class SourceCfg:
     type: str
     url: str = ""
     base_weight: float = 1.0
+    max_fetch: int = 20
     config: dict[str, Any] = field(default_factory=dict)
 
 
@@ -70,6 +71,7 @@ def parse_module_cfg(data: dict[str, Any]) -> ModuleCfg:
                 type=src.get("type", "rss"),
                 url=src.get("url", ""),
                 base_weight=float(src.get("base_weight", 1.0)),
+                max_fetch=int(src.get("max_fetch", 20)),
                 config=src.get("config") or {},
             )
         )

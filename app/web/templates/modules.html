@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}模块管理{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>模块管理</h1>
+    <p class="subtitle">新增主题 = 粘贴一份 YAML，热加载生效，无需改代码</p>
+  </div>
+  <button class="btn primary" onclick="document.getElementById('new-module').scrollIntoView()">+ 新建模块</button>
+</div>
+
+{% for stat in module_stats %}
+<div class="card">
+  <div class="flex" style="justify-content:space-between;">
+    <div class="flex" style="gap:8px;">
+      <strong style="font-size:15px;">{{ stat.module.name }}</strong>
+      <code>{{ stat.module.key }}</code>
+      <span class="badge {{ 'ok' if stat.module.enabled else 'fail' }}">{{ '启用' if stat.module.enabled else '停用' }}</span>
+      <label class="switch" title="启停">
+        <input type="checkbox" {{ 'checked' if stat.module.enabled }} onchange="toggleModule({{ stat.module.id }}, this.checked)">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="flex" style="gap:8px;">
+      <button class="btn primary sm" onclick="runModule('{{ stat.module.key }}')">立即运行</button>
+      <button class="btn secondary sm" onclick="toggleYaml({{ stat.module.id }})">查看 YAML</button>
+    </div>
+  </div>
+
+  <div class="muted" style="margin-top:8px; font-size:13px;">
+    调度 <span class="mono">{{ stat.module.schedule }}</span> ·
+    {{ stat.module.lifetime }} · 每期最多 {{ stat.module.max_items }} 条 ·
+    来源 {{ stat.source_count }} 个
+    {% if stat.last_run %}
+      · 上次运行
+      <span class="badge {{ 'ok' if stat.last_run.status == 'success' else 'fail' }}">{{ stat.last_run.status }}</span>
+    {% endif %}
+  </div>
+
+  <div class="flex" style="margin-top:10px; gap:6px; flex-wrap:wrap;">
+    {% for s in stat.sources %}
+      <span class="badge neutral">{{ s.name }} <span class="mono">({{ s.type }})</span></span>
+    {% endfor %}
+  </div>
+
+  <pre id="yaml-{{ stat.module.id }}" style="display:none; margin-top:12px;">{{ stat.module.config_yaml or '' }}</pre>
+</div>
+{% endfor %}
+
+<div class="card" id="new-module">
+  <h2 style="margin-top:0;">新建模块</h2>
+  <p class="subtitle" style="margin-bottom:16px;">粘贴模块 YAML（参考 <code>modules/tech-blog.yaml</code>），提交后写入 modules/ 目录并热加载。</p>
+  <div class="form-row">
+    <label>模块 key（唯一，如 my-topic）</label>
+    <input type="text" id="module-key" placeholder="my-topic">
+  </div>
+  <div class="form-row">
+    <label>YAML 配置</label>
+    <textarea id="module-yaml" placeholder="key: my-topic&#10;name: 我的主题&#10;enabled: true&#10;schedule: '0 8 * * *'&#10;max_items_per_run: 5&#10;llm:&#10;  profile: |&#10;    用户兴趣描述...&#10;sources:&#10;  - name: 某来源&#10;    type: rss&#10;    url: https://example.com/rss&#10;push:&#10;  channels: [wechat]"></textarea>
+  </div>
+  <button class="btn primary" onclick="createModule()">创建并热加载</button>
+  <span id="create-msg" class="muted" style="margin-left:10px;"></span>
+</div>
+
+<script>
+async function runModule(key) {
+  const btn = event.target;
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = '运行中...';
+  try {
+    const resp = await fetch(`/api/modules/${key}/run`, {method:'POST'});
+    const data = await resp.json();
+    if (!resp.ok) { alert(JSON.stringify(data)); }
+    setTimeout(() => location.reload(), 1500);
+  } catch (e) {
+    alert(e);
+    btn.disabled = false; btn.textContent = original;
+  }
+}
+async function toggleModule(id, enabled) {
+  try {
+    const resp = await fetch(`/api/modules/${id}`, {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({enabled: enabled})
+    });
+    if (!resp.ok) { alert(JSON.stringify(await resp.json())); }
+  } catch (e) { alert(e); }
+}
+function toggleYaml(id) {
+  const el = document.getElementById('yaml-' + id);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+async function createModule() {
+  const key = document.getElementById('module-key').value.trim();
+  const yaml = document.getElementById('module-yaml').value.trim();
+  const msg = document.getElementById('create-msg');
+  if (!key || !yaml) { msg.textContent = '请填写 key 和 YAML'; return; }
+  msg.textContent = '创建中...';
+  try {
+    const resp = await fetch('/api/modules/create', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({key: key, yaml: yaml})
+    });
+    const data = await resp.json();
+    if (!resp.ok) { msg.textContent = '失败: ' + JSON.stringify(data); return; }
+    msg.textContent = '创建成功，正在刷新...';
+    setTimeout(() => location.reload(), 1200);
+  } catch (e) { msg.textContent = '错误: ' + e; }
+}
+</script>
+{% endblock %}

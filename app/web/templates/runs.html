@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}运行日志{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>运行日志</h1>
+    <p class="subtitle">每次模块运行的完整记录</p>
+  </div>
+</div>
+
+<div class="table-wrap">
+<table>
+  <tr><th>ID</th><th>模块</th><th>状态</th><th>抓取</th><th>去重后</th><th>过滤后</th><th>选中</th><th>推送</th><th>开始</th><th>结束</th><th>错误</th></tr>
+  {% for r in runs %}
+  <tr>
+    <td>{{ r.id }}</td>
+    <td>{{ module_names.get(r.module_id, r.module_id) }}</td>
+    <td><span class="badge {{ 'ok' if r.status == 'success' else ('warn' if r.status == 'partial' else 'fail') }}">{{ r.status }}</span></td>
+    <td>{{ r.fetched_count }}</td>
+    <td>{{ r.after_dedup_count }}</td>
+    <td>{{ r.after_filter_count }}</td>
+    <td>{{ r.selected_count }}</td>
+    <td>{{ r.pushed_count }}</td>
+    <td class="mono">{{ r.started_at.strftime('%m-%d %H:%M') }}</td>
+    <td class="mono">{{ r.finished_at.strftime('%m-%d %H:%M') if r.finished_at else '-' }}</td>
+    <td class="muted" style="max-width:280px; word-break:break-all;">{{ r.error_msg or '' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+{% endblock %}

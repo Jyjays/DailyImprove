@@ -1,0 +1,65 @@
+key: ai-infra
+name: AI Infra 技术动态
+enabled: true
+schedule: "0 9 * * *"
+timezone: Asia/Shanghai
+lifetime: persistent
+max_items_per_run: 5
+dedup:
+  strategy: persistent
+  cross_source: title_similarity
+  title_similarity_threshold: 0.85
+llm:
+  model: ""
+  temperature: 0.1
+  batch_size: 5
+  max_tokens: 8000
+  threshold: 60
+  profile: |
+    用户是研究生，有列存数据库/存储系统实习背景，正在转向 AI Infra 方向（目标岗位：
+    训练框架 / 推理引擎 / 高性能算子 / 分布式系统）。
+    当前学习路线：C++与OS基础 → CUDA 与并行编程 → 深度学习系统（CMU 10-414 needle）
+    → 分布式训练与推理（Megatron/ZeRO/FlashAttention/vLLM）。
+    关注：CUDA kernel 优化、GPU 架构、算子融合、编译栈（TVM/MLIR/XLA）、
+    分布式并行策略、KV cache 与显存管理、推理服务系统（batching/scheduling）、量化。
+    优先：有实现细节、有性能数据、能看懂机制的技术内容。
+    不要：产品发布新闻、融资、纯营销稿。
+    摘要里请点明：这个技术点属于学习路线里的哪个阶段。
+filter:
+  keywords_include: ["CUDA", "GPU", "kernel", "inference", "serving", "training", "quantization", "NCCL", "parallel", "compiler", "TVM", "MLIR", "throughput"]
+  keywords_exclude: ["融资", "发布", "融资", "招聘"]
+  min_content_length: 0
+  lookback_hours: 168
+sources:
+  - name: NVIDIA Developer Blog
+    type: rss
+    url: "https://developer.nvidia.com/blog/feed/"
+    base_weight: 1.2
+    max_fetch: 20
+  - name: PyTorch Blog
+    type: rss
+    url: "https://pytorch.org/feed"
+    base_weight: 1.1
+    max_fetch: 15
+  - name: Hugging Face Blog
+    type: rss
+    url: "https://huggingface.co/blog/feed.xml"
+    base_weight: 1.0
+    max_fetch: 15
+  - name: Google Research Blog
+    type: rss
+    url: "https://research.google/blog/rss/"
+    base_weight: 0.9
+    max_fetch: 15
+  - name: Hacker News · CUDA
+    type: rss
+    url: "https://hnrss.org/newest?q=CUDA"
+    base_weight: 0.8
+    max_fetch: 15
+  - name: arXiv · LLM 推理系统
+    type: rss
+    url: "https://export.arxiv.org/api/query?search_query=abs:%22inference%22+AND+abs:%22serving%22&start=0&max_results=30&sortBy=submittedDate&sortOrder=descending"
+    base_weight: 1.0
+    max_fetch: 15
+push:
+  channels: [file]

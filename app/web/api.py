@@ -1,20 +1,25 @@
 """REST API。"""
 from __future__ import annotations
 
+import re
 import threading
 from datetime import datetime
 from typing import Any
 
+import yaml
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.feedback import apply_feedback, get_source_effective_rating
 from app.models.db import SessionLocal, get_session
 from app.models.models import Feedback, Item, Module, PushRecord, RunRecord, Source
+from app.module_loader import sync_module_file
 from app.orchestrator import run_module
 from app.scheduler import scheduler_manager
+from app.schemas import parse_module_cfg
 
 router = APIRouter(prefix="/api")
 
@@ -29,6 +34,11 @@ class FeedbackIn(BaseModel):
 
 class ModuleToggleIn(BaseModel):
     enabled: bool
+
+
+class ModuleCreateIn(BaseModel):
+    key: str
+    yaml: str
 
 
 def _module_dict(m: Module, source_count: int = 0, last_run: RunRecord | None = None) -> dict[str, Any]:
@@ -87,6 +97,44 @@ def toggle_module(module_id: int, payload: ModuleToggleIn, session: Session = De
     session.commit()
     scheduler_manager.resync_jobs()
     return {"ok": True}
+
+
+@router.post("/modules/create")
+def create_module(payload: ModuleCreateIn, session: Session = Depends(get_session)):
+    key = payload.key.strip()
+    if not key or not re.fullmatch(r"[\w-]+", key):
+        raise HTTPException(status_code=400, detail="key 只能包含字母、数字、下划线、连字符")
+    try:
+        data = yaml.safe_load(payload.yaml) or {}
+    except yaml.YAMLError as e:
+        raise HTTPException(status_code=400, detail=f"YAML 解析失败: {e}")
+    if "key" not in data:
+        data["key"] = key
+    elif str(data["key"]) != key:
+        raise HTTPException(status_code=400, detail=f"YAML 内 key({data['key']}) 与表单 key({key}) 不一致")
+    try:
+        parse_module_cfg(data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"配置校验失败: {e}")
+
+    target = settings.modules_dir / f"{key}.yaml"
+    target.write_text(payload.yaml, encoding="utf-8")
+    try:
+        sync_module_file(session, target)
+        session.commit()
+        scheduler_manager.resync_jobs()
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=400, detail=f"同步失败: {e}")
+    return {"ok": True, "key": key}
+
+
+@router.get("/modules/{module_key}/yaml")
+def get_module_yaml(module_key: str, session: Session = Depends(get_session)):
+    module = session.execute(select(Module).where(Module.key == module_key)).scalar_one_or_none()
+    if module is None:
+        raise HTTPException(status_code=404, detail="模块不存在")
+    return {"key": module.key, "yaml": module.config_yaml or ""}
 
 
 @router.get("/sources")

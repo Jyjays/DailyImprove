@@ -11,8 +11,9 @@ from app.utils.logger import logger
 class Ranker:
     """条目打分：来源权重 × LLM 分 × 新鲜度 × 兴趣。"""
 
-    def __init__(self, module_cfg: ModuleCfg):
+    def __init__(self, module_cfg: ModuleCfg, interest_tags: dict[str, float] | None = None):
         self.module_cfg = module_cfg
+        self.interest_tags = interest_tags or {}
         self.half_life_hours = float((module_cfg.dedup or {}).get("freshness_half_life_hours", 48))
 
     def compute_scores(self, items: list[Item]) -> list[Item]:
@@ -22,12 +23,14 @@ class Ranker:
         max_w = max(weights) or 1.0
         for item, w in zip(items, weights):
             llm_score = (item.llm_score or 50) / 100.0
+            value = self._value(item)
             source_norm = w / max_w
             freshness = self._freshness(item)
             interest = self._interest(item)
             item.final_score = (
-                0.45 * llm_score
-                + 0.20 * source_norm
+                0.35 * value
+                + 0.25 * llm_score
+                + 0.15 * source_norm
                 + 0.15 * freshness
                 + 0.10 * interest
             )
@@ -42,6 +45,20 @@ class Ranker:
         multiplier = 0.3 + 1.2 * max(0.0, min(1.0, rating))
         return (item.source.base_weight or 1.0) * multiplier
 
+    @staticmethod
+    def _value(item: Item) -> float:
+        """从 LLM 输出解析价值分（0-100 归一化到 0-1）。缺失时回退到相关度分。"""
+        import json
+        try:
+            data = json.loads(item.llm_output or "{}")
+        except json.JSONDecodeError:
+            data = {}
+        raw = data.get("value", data.get("score", item.llm_score or 50))
+        try:
+            return max(0.0, min(1.0, float(raw) / 100.0))
+        except (TypeError, ValueError):
+            return (item.llm_score or 50) / 100.0
+
     def _freshness(self, item: Item) -> float:
         age_hours = 0.0
         ref = item.published_at or item.fetched_at or datetime.now()
@@ -51,6 +68,16 @@ class Ranker:
 
     def _interest(self, item: Item) -> float:
         from app.pipeline.filters import DeterministicFilter
-        hit = DeterministicFilter.keyword_hit_count(item, self.module_cfg.filter.keywords_include)
-        total = len(self.module_cfg.filter.keywords_include) or 1
-        return min(1.0, hit / total)
+        from app.pipeline.interest import item_tags
+
+        keywords = self.module_cfg.filter.keywords_include
+        total = len(keywords) or 1
+        hit = DeterministicFilter.keyword_hit_count(item, keywords)
+        kw_score = min(1.0, hit / total) if keywords else 0.0
+
+        tag_score = 0.0
+        if self.interest_tags:
+            hits = [self.interest_tags.get(t, 0.0) for t in item_tags(item)]
+            tag_score = max(hits) if hits else 0.0
+
+        return min(1.0, 0.6 * kw_score + 0.4 * tag_score)

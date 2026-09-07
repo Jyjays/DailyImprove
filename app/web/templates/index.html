@@ -1,36 +1,45 @@
 {% extends "base.html" %}
 {% block title %}DailyImprove 概览{% endblock %}
 {% block content %}
-<h1>DailyImprove 控制台</h1>
-
-<h2>信息模块</h2>
-{% for stat in module_stats %}
-<div class="card" style="display:flex; justify-content:space-between; align-items:center;">
+<div class="page-head">
   <div>
-    <strong>{{ stat.module.name }}</strong>
-    <code>{{ stat.module.key }}</code>
-    <span class="badge {{ 'ok' if stat.module.enabled else 'fail' }}">
-      {{ '启用' if stat.module.enabled else '停用' }}
-    </span>
-    <div style="color:#64748b; margin-top:6px;">
-      调度 {{ stat.module.schedule }} · {{ stat.module.lifetime }} · 来源 {{ stat.source_count }} 个 ·
-      每期最多 {{ stat.module.max_items }} 条
-    </div>
-    <div style="color:#64748b; margin-top:4px;">
-      上次运行：
-      {% if stat.last_run %}
-        <span class="badge {{ 'ok' if stat.last_run.status == 'success' else 'fail' }}">{{ stat.last_run.status }}</span>
-        {{ stat.last_run.finished_at.strftime('%Y-%m-%d %H:%M') if stat.last_run.finished_at else '' }}
-      {% else %}无{% endif %}
-    </div>
+    <h1>信息模块</h1>
+    <p class="subtitle">每个模块按 cron 自动运行，抓取 → 筛选 → 推送</p>
   </div>
-  <button class="run-btn" onclick="runModule('{{ stat.module.key }}')">立即运行</button>
+</div>
+
+<div class="grid cols-2">
+{% for stat in module_stats %}
+<div class="card">
+  <div class="flex" style="justify-content:space-between;">
+    <div>
+      <strong style="font-size:15px;">{{ stat.module.name }}</strong>
+      <code>{{ stat.module.key }}</code>
+      <span class="badge {{ 'ok' if stat.module.enabled else 'fail' }}">
+        {{ '启用' if stat.module.enabled else '停用' }}
+      </span>
+    </div>
+    <button class="btn primary sm" onclick="runModule('{{ stat.module.key }}')">立即运行</button>
+  </div>
+  <div class="muted" style="margin-top:8px; font-size:13px;">
+    调度 <span class="mono">{{ stat.module.schedule }}</span> · {{ stat.module.lifetime }} ·
+    来源 {{ stat.source_count }} 个 · 每期最多 {{ stat.module.max_items }} 条
+  </div>
+  <div class="muted" style="margin-top:4px; font-size:13px;">
+    上次运行：
+    {% if stat.last_run %}
+      <span class="badge {{ 'ok' if stat.last_run.status == 'success' else 'fail' }}">{{ stat.last_run.status }}</span>
+      {{ stat.last_run.finished_at.strftime('%Y-%m-%d %H:%M') if stat.last_run.finished_at else '' }}
+    {% else %}无{% endif %}
+  </div>
 </div>
 {% endfor %}
+</div>
 
 <h2>最近运行</h2>
+<div class="table-wrap">
 <table>
-  <tr><th>ID</th><th>模块</th><th>状态</th><th>抓取</th><th>去重后</th><th>过滤后</th><th>选中</th><th>时间</th></tr>
+  <tr><th>ID</th><th>模块</th><th>状态</th><th>抓取</th><th>去重后</th><th>过滤后</th><th>选中</th><th>推送</th><th>时间</th></tr>
   {% for r in runs %}
   <tr>
     <td>{{ r.id }}</td>
@@ -40,28 +49,34 @@
     <td>{{ r.after_dedup_count }}</td>
     <td>{{ r.after_filter_count }}</td>
     <td>{{ r.selected_count }}</td>
-    <td>{{ r.finished_at.strftime('%m-%d %H:%M') if r.finished_at else r.started_at.strftime('%m-%d %H:%M') }}</td>
+    <td>{{ r.pushed_count }}</td>
+    <td class="mono">{{ r.finished_at.strftime('%m-%d %H:%M') if r.finished_at else r.started_at.strftime('%m-%d %H:%M') }}</td>
   </tr>
   {% endfor %}
 </table>
+</div>
 
 <h2>最新条目</h2>
+<div class="table-wrap">
 <table>
-  <tr><th>标题</th><th>模块</th><th>来源</th><th>状态</th><th>LLM分</th></tr>
+  <tr><th>标题</th><th>模块</th><th>来源</th><th>状态</th><th>LLM分</th><th>价值分</th></tr>
   {% for it in items %}
   <tr>
     <td>{% if it.url %}<a href="{{ it.url }}" target="_blank">{{ it.title }}</a>{% else %}{{ it.title }}{% endif %}</td>
     <td>{{ it.module.key if it.module else it.module_id }}</td>
     <td>{{ it.source.name if it.source else it.source_id }}</td>
-    <td>{{ it.status }}</td>
+    <td><span class="badge {{ 'ok' if it.status == 'pushed' else ('neutral' if it.status == 'new' else 'warn') }}">{{ it.status }}</span></td>
     <td>{{ it.llm_score|round(1) if it.llm_score is not none else '-' }}</td>
+    <td>{{ (it.llm_output|value_score) if it.llm_output else '-' }}</td>
   </tr>
   {% endfor %}
 </table>
+</div>
 
 <script>
 async function runModule(key) {
   const btn = event.target;
+  const original = btn.textContent;
   btn.disabled = true; btn.textContent = '运行中...';
   try {
     const resp = await fetch(`/api/modules/${key}/run`, {method:'POST'});
@@ -70,7 +85,7 @@ async function runModule(key) {
     setTimeout(() => location.reload(), 1500);
   } catch (e) {
     alert(e);
-    btn.disabled = false; btn.textContent = '立即运行';
+    btn.disabled = false; btn.textContent = original;
   }
 }
 </script>

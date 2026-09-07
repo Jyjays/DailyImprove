@@ -1,6 +1,6 @@
 key: tech-blog
 name: 技术博客精选
-enabled: true
+enabled: false                   # 与当前三条主线无关，停用省 LLM 成本；需要时改回 true
 schedule: "0 8 * * *"
 timezone: Asia/Shanghai
 lifetime: persistent

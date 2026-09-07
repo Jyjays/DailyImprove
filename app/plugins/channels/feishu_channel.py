@@ -61,6 +61,8 @@ class FeishuDocChannel(ChannelPlugin):
             if it.url:
                 blocks.append({"block_type": 12, "bullet": {"elements": [{"text_run": {"content": "原文链接：", "text_element_style": {"link": {"url": it.url}}}}]}})
             blocks.append({"block_type": 12, "bullet": {"elements": [{"text_run": {"content": f"来源：{it.source_name}（评分 {it.source_rating:.2f}）"}}]}})
+            if it.merged_sources:
+                blocks.append({"block_type": 12, "bullet": {"elements": [{"text_run": {"content": f"另见来源：{it.merged_sources}"}}]}})
             if it.summary:
                 blocks.append({"block_type": 12, "bullet": {"elements": [{"text_run": {"content": f"摘要：{it.summary}"}}]}})
             if it.llm_reason:

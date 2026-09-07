@@ -24,7 +24,7 @@ def normalize(raw: RawItem, source_ctx: SourceContext, source: Source, module_cf
         url=raw.url or None,
         author=raw.author,
         summary=summary or None,
-        raw_content=content[:10000] or None,
+        raw_content=content[:20000] or None,
         lifetime=module_cfg.lifetime,
         status="new",
         published_at=published_at,

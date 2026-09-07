@@ -57,7 +57,9 @@ def sync_module_file(session: Session, path: Path) -> Module:
         source.type = src_cfg.type
         source.url = src_cfg.url
         source.base_weight = src_cfg.base_weight
-        source.config_json = json.dumps(src_cfg.config, ensure_ascii=False)
+        config = dict(src_cfg.config or {})
+        config.setdefault("max_fetch", src_cfg.max_fetch)
+        source.config_json = json.dumps(config, ensure_ascii=False)
     session.flush()
     return module
 

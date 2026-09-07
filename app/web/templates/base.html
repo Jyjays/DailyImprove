@@ -5,30 +5,115 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}DailyImprove{% endblock %}</title>
   <style>
-    body { font-family: -apple-system, "Segoe UI", sans-serif; margin: 0; background:#f5f6fa; color:#222; }
-    nav { background:#1e293b; padding:12px 24px; display:flex; gap:18px; align-items:center; }
-    nav a { color:#e2e8f0; text-decoration:none; font-weight:600; }
-    nav a:hover { color:#38bdf8; }
-    .container { max-width:1100px; margin:24px auto; padding:0 16px; }
-    .card { background:#fff; border-radius:12px; padding:18px 20px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
-    .badge { display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600; }
-    .ok { background:#dcfce7; color:#15803d; }
-    .fail { background:#fee2e2; color:#b91c1c; }
-    .run-btn { background:#2563eb; color:#fff; border:none; padding:6px 14px; border-radius:8px; cursor:pointer; }
-    .run-btn:hover { background:#1d4ed8; }
-    table { width:100%; border-collapse:collapse; background:#fff; }
-    th, td { text-align:left; padding:10px 12px; border-bottom:1px solid #e2e8f0; vertical-align:top; }
-    th { background:#f1f5f9; }
-    .star { cursor:pointer; font-size:20px; color:#cbd5e1; }
-    .star.on { color:#f59e0b; }
-    code { background:#f1f5f9; padding:2px 6px; border-radius:4px; }
+    :root {
+      --bg: #f1f5f9;
+      --panel: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --muted: #64748b;
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --ok: #16a34a;
+      --ok-bg: #dcfce7;
+      --fail: #dc2626;
+      --fail-bg: #fee2e2;
+      --warn: #d97706;
+      --warn-bg: #fef3c7;
+      --radius: 12px;
+      --shadow: 0 1px 3px rgba(15, 23, 42, .08), 0 1px 2px rgba(15, 23, 42, .04);
+    }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.6; }
+    a { color: var(--primary); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* 导航 */
+    nav { background: #0f172a; padding: 0 24px; display: flex; gap: 4px; align-items: center; height: 56px; position: sticky; top: 0; z-index: 10; }
+    nav .brand { color: #fff; font-weight: 700; font-size: 16px; margin-right: 16px; letter-spacing: .3px; }
+    nav a.navlink { color: #cbd5e1; text-decoration: none; padding: 6px 14px; border-radius: 8px; font-weight: 500; transition: all .15s; }
+    nav a.navlink:hover { color: #fff; background: rgba(255,255,255,.08); text-decoration: none; }
+    nav a.navlink.active { color: #fff; background: var(--primary); }
+
+    /* 布局 */
+    .container { max-width: 1160px; margin: 28px auto; padding: 0 20px; }
+    .page-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+    h1 { font-size: 22px; margin: 0; }
+    h2 { font-size: 16px; margin: 28px 0 12px; }
+    .subtitle { color: var(--muted); margin: 4px 0 0; }
+
+    /* 卡片 */
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
+    .grid { display: grid; gap: 16px; }
+    .grid.cols-2 { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+
+    /* 徽章 */
+    .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+    .badge.ok { background: var(--ok-bg); color: var(--ok); }
+    .badge.fail { background: var(--fail-bg); color: var(--fail); }
+    .badge.warn { background: var(--warn-bg); color: var(--warn); }
+    .badge.neutral { background: #e2e8f0; color: #475569; }
+
+    /* 按钮 */
+    .btn { display: inline-flex; align-items: center; gap: 6px; border: none; padding: 7px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all .15s; text-decoration: none; }
+    .btn:hover { text-decoration: none; }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
+    .btn.primary { background: var(--primary); color: #fff; }
+    .btn.primary:hover { background: var(--primary-hover); }
+    .btn.secondary { background: #e2e8f0; color: #334155; }
+    .btn.secondary:hover { background: #cbd5e1; }
+    .btn.danger { background: var(--fail); color: #fff; }
+    .btn.sm { padding: 4px 10px; font-size: 12px; }
+
+    /* 表格 */
+    .table-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; box-shadow: var(--shadow); }
+    table { width: 100%; border-collapse: collapse; min-width: 640px; }
+    th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { background: #f8fafc; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); white-space: nowrap; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f8fafc; }
+
+    /* 表单 */
+    label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; }
+    input[type=text], textarea, select { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; font-family: inherit; background: #fff; }
+    textarea { min-height: 200px; font-family: "SFMono-Regular", Consolas, monospace; font-size: 12.5px; }
+    input:focus, textarea:focus, select:focus { outline: 2px solid rgba(79, 70, 229, .25); border-color: var(--primary); }
+    .form-row { margin-bottom: 14px; }
+
+    /* 开关 */
+    .switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; inset: 0; background: #cbd5e1; border-radius: 999px; cursor: pointer; transition: .2s; }
+    .slider:before { content: ""; position: absolute; height: 18px; width: 18px; left: 2px; top: 2px; background: #fff; border-radius: 50%; transition: .2s; }
+    .switch input:checked + .slider { background: var(--primary); }
+    .switch input:checked + .slider:before { transform: translateX(18px); }
+
+    /* 星级 */
+    .star { cursor: pointer; font-size: 22px; color: #cbd5e1; user-select: none; transition: color .1s; }
+    .star.on { color: #f59e0b; }
+    .star:hover { color: #f59e0b; }
+
+    /* 工具 */
+    code { background: #f1f5f9; padding: 2px 7px; border-radius: 5px; font-size: 12.5px; }
+    pre { background: #0f172a; color: #e2e8f0; padding: 14px; border-radius: 10px; overflow: auto; font-size: 12px; }
+    .muted { color: var(--muted); }
+    .mono { font-family: "SFMono-Regular", Consolas, monospace; font-size: 12.5px; }
+    .flex { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .spacer { flex: 1; }
+    .summary-box { background: #f8fafc; border-left: 3px solid var(--primary); padding: 10px 14px; border-radius: 6px; margin: 8px 0; }
+    .empty { text-align: center; color: var(--muted); padding: 40px 20px; }
   </style>
 </head>
 <body>
 <nav>
-  <a href="/">概览</a>
-  <a href="/sources">来源与反馈</a>
-  <a href="/docs">API 文档</a>
+  <span class="brand">DailyImprove</span>
+  <a class="navlink {{ 'active' if request.url.path == '/' else '' }}" href="/">概览</a>
+  <a class="navlink {{ 'active' if request.url.path.startswith('/modules') else '' }}" href="/modules">模块</a>
+  <a class="navlink {{ 'active' if request.url.path.startswith('/sources') else '' }}" href="/sources">来源</a>
+  <a class="navlink {{ 'active' if request.url.path.startswith('/digest') else '' }}" href="/digest">Digest</a>
+  <a class="navlink {{ 'active' if request.url.path.startswith('/runs') else '' }}" href="/runs">运行日志</a>
+  <a class="navlink {{ 'active' if request.url.path.startswith('/feedback') else '' }}" href="/feedback">反馈</a>
+  <span class="spacer"></span>
+  <a class="navlink" href="/docs" target="_blank">API</a>
 </nav>
 <div class="container">
 {% block content %}{% endblock %}
