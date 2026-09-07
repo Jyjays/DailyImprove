@@ -1,7 +1,14 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-title 数析研习所
+title DailyImprove 学习台
+
+where node >nul 2>nul
+if errorlevel 1 (
+  echo [错误] 未找到 Node.js，请先安装并将其加入 PATH：https://nodejs.org/
+  pause
+  exit /b 1
+)
 
 if not exist "node_modules" (
   echo 首次启动，正在安装学习平台依赖，请稍候...

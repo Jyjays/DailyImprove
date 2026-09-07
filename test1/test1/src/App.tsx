@@ -32,8 +32,8 @@ export default function App() {
         <div className="brand">
           <span className="brand-glyph"><BookOpen size={20} /></span>
           <div>
-            <strong>松的学习台</strong>
-            <span>DAILY IMPROVE · STUDY</span>
+            <strong>DailyImprove</strong>
+            <span>学习台 · STUDY DESK</span>
           </div>
         </div>
         <nav className="main-nav">

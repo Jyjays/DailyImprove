@@ -144,7 +144,7 @@ class CheckIn(Base):
 
 
 class Course(Base):
-    """课程与学习资料。track 对应松的三条线，phase 对应 roadmap 阶段。"""
+    """课程与学习资料。track 对应三条主线，phase 对应 roadmap 阶段。"""
     __tablename__ = "courses"
 
     id = Column(Integer, primary_key=True, autoincrement=True)

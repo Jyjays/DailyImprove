@@ -79,7 +79,7 @@ def _item_to_knowledge(item: Item, module_name: str = "") -> dict[str, Any]:
     """把 Item 转成前端知识卡片。
 
     优先级：LLM 生成的中文摘要 > 数据库 summary > 正文截断。
-    原链接始终附在最后（松的要求：先展示加工过的内容，想深入再跳原链接）。
+    原链接始终附在最后（设计约定：先展示加工过的内容，想深入再跳原链接）。
     """
     llm = _parse_llm_output(item.llm_output)
     ai_summary = (llm.get("summary") or "").strip()
