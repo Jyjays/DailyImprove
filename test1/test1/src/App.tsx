@@ -6,6 +6,7 @@ import {
 import type { CheckinStatus, CourseItem, KnowledgeItem, TodayPlan } from './lib/api'
 import {
   CATEGORY_LABELS, fetchCheckin, fetchCourses, fetchKnowledge, fetchToday, saveCheckin,
+  updateCourse,
 } from './lib/api'
 import { interviewQuestions } from './data/interview'
 import { Markdown } from './components/Markdown'
@@ -339,15 +340,38 @@ const TRACK_LABELS: Record<string, string> = {
   'ai-infra': 'AI Infra', paper: '论文', drone: '横向',
 }
 
+const COURSE_STATUS = ['未开始', '进行中', '已完成', '暂停']
+
 function CoursesPage() {
   const [items, setItems] = useState<CourseItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [savingId, setSavingId] = useState<number | null>(null)
+  const [err, setErr] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try { setItems((await fetchCourses()).items) } catch { setItems([]) } finally { setLoading(false) }
   }, [])
   useEffect(() => { load() }, [load])
+
+  /** 改状态或进度：PUT /api/study/courses/{id}，成功后就地更新本地列表 */
+  const patch = useCallback(async (c: CourseItem, next: Partial<CourseItem>) => {
+    const merged: CourseItem = { ...c, ...next }
+    setSavingId(c.id)
+    setErr(null)
+    try {
+      const { id: _drop, ...body } = merged
+      await updateCourse(c.id, body)
+      setItems((prev) => prev.map((x) => (x.id === c.id ? merged : x)))
+    } catch (e) {
+      setErr(`保存失败（课程 #${c.id}）：${(e as Error).message}`)
+    } finally {
+      setSavingId(null)
+    }
+  }, [])
+
+  const bump = (c: CourseItem, delta: number) =>
+    patch(c, { progress: Math.max(0, Math.min(100, c.progress + delta)) })
 
   const byTrack = (t: string) => items.filter((i) => i.track === t)
 
@@ -359,6 +383,8 @@ function CoursesPage() {
           <h1>课程资料</h1>
         </div>
       </header>
+
+      {err && <p className="dim" style={{ color: '#a32d2d' }}>{err}</p>}
 
       {loading ? <Centered><Loader2 className="spin" size={24} /><p>加载中…</p></Centered>
         : items.length === 0
@@ -392,9 +418,26 @@ function CoursesPage() {
                       )}
                       <div className="course-foot">
                         {c.url && <a href={c.url} target="_blank" rel="noreferrer">课程主页 <ExternalLink size={12} /></a>}
-                        <span className="course-prog">进度 {c.progress}%</span>
                       </div>
                       <div className="bar"><i style={{ width: `${c.progress}%` }} /></div>
+                      <div className="course-ctrl">
+                        <select
+                          value={COURSE_STATUS.includes(c.status) ? c.status : '未开始'}
+                          disabled={savingId === c.id}
+                          onChange={(e) => {
+                            const s = e.target.value
+                            patch(c, { status: s, progress: s === '已完成' ? 100 : c.progress })
+                          }}
+                        >
+                          {COURSE_STATUS.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <button type="button" disabled={savingId === c.id || c.progress <= 0}
+                          onClick={() => bump(c, -10)} title="进度 -10%">−</button>
+                        <span className="course-prog">{c.progress}%</span>
+                        <button type="button" disabled={savingId === c.id || c.progress >= 100}
+                          onClick={() => bump(c, 10)} title="进度 +10%">+</button>
+                        {savingId === c.id && <Loader2 className="spin" size={12} />}
+                      </div>
                     </article>
                   ))}
                 </div>

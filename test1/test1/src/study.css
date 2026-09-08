@@ -284,6 +284,22 @@
 }
 .course-foot a { display: inline-flex; align-items: center; gap: 5px; color: var(--coral); text-decoration: none; }
 .course-prog { font: 11px/1 'IBM Plex Mono', monospace; color: var(--muted); }
+.course-ctrl {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px;
+}
+.course-ctrl select {
+  height: 24px; padding: 0 6px;
+  font: 11px/1 'IBM Plex Mono', monospace; color: #55564f;
+  background: #fbfaf5; border: 1px solid var(--line); border-radius: 4px;
+}
+.course-ctrl button {
+  width: 22px; height: 22px; padding: 0;
+  font: 13px/1 'IBM Plex Mono', monospace; color: #55564f;
+  background: #fbfaf5; border: 1px solid var(--line); border-radius: 4px;
+  cursor: pointer;
+}
+.course-ctrl button:hover:not(:disabled) { border-color: var(--coral); color: var(--coral); }
+.course-ctrl button:disabled { opacity: .35; cursor: default; }
 .bar { height: 3px; margin-top: 9px; background: #e4e0d5; }
 .bar i { display: block; height: 100%; background: var(--coral); }
 

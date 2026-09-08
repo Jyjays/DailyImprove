@@ -193,6 +193,7 @@ def _rewrite_md_checklist(md_path: Path, updates: dict[str, dict[str, str]]) -> 
     lines = content.splitlines(keepends=True)
     in_section = False
     changed = False
+    used: set[str] = set()  # 每个 category 只命中一次行
 
     for i, line in enumerate(lines):
         if re.match(r"^##\s+", line):
@@ -207,11 +208,14 @@ def _rewrite_md_checklist(md_path: Path, updates: dict[str, dict[str, str]]) -> 
 
         text = m.group(4)
         for category, label in CATEGORY_LABELS.items():
+            if category in used:
+                continue
             if category not in updates:
                 continue
             if not text.startswith(label):
                 continue
 
+            used.add(category)
             upd = updates[category]
             new_mark = STATUS_TO_MARK.get(upd.get("status", "todo"), " ")
             note = (upd.get("note") or "").strip()
@@ -378,7 +382,17 @@ def save_checkin(payload: CheckInPayload, session: Session = Depends(get_session
     saved = []
     updates: dict[str, dict[str, str]] = {}
 
+    # 去重：同一 (date, category) 只保留最后一次出现的，防御前端重复提交
+    seen: dict[str, int] = {}
+    deduped: list[CheckInItem] = []
     for it in payload.items:
+        if it.category in seen:
+            deduped[seen[it.category]] = it
+        else:
+            seen[it.category] = len(deduped)
+            deduped.append(it)
+
+    for it in deduped:
         row = session.query(CheckIn).filter(
             CheckIn.date == d, CheckIn.category == it.category
         ).first()

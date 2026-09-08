@@ -14,3 +14,15 @@ test1/test1/vite.config.d.ts
 
 # 大体积归档
 test1.rar
+
+# CS:APP 等课程的官方 handout 与编译产物（官网可重下，不入库）
+# 注意：driver3.py 是自有产出，必须在版本控制里，不要忽略整个目录
+practice/**/*.tar
+practice/**/traces/*.trace
+practice/**/trace.tmp
+practice/**/*.o
+practice/**/csim
+practice/**/csim-ref
+practice/**/test-csim
+practice/**/test-trans
+practice/**/tracegen
