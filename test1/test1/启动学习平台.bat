@@ -1,25 +1,28 @@
 @echo off
-chcp 65001 >nul
 cd /d "%~dp0"
-title DailyImprove å­¦ä¹ å°
+title DailyImprove Ñ§Ï°Ì¨
 
 where node >nul 2>nul
 if errorlevel 1 (
-  echo [é”™è¯¯] æœªæ‰¾åˆ° Node.jsï¼Œè¯·å…ˆå®‰è£…å¹¶å°†å…¶åŠ å…¥ PATHï¼šhttps://nodejs.org/
+  echo [´íÎó] Î´ÕÒµ½ Node.js£¬ÇëÏÈ°²×°: https://nodejs.org/
   pause
   exit /b 1
 )
 
+REM ´úÀíÈÆ¹ı£¨vite µÄ proxy ×ª·¢±¾»úºó¶ËÊ±ĞèÒª£©
+set "NO_PROXY=127.0.0.1,localhost"
+set "no_proxy=127.0.0.1,localhost"
+
 if not exist "node_modules" (
-  echo é¦–æ¬¡å¯åŠ¨ï¼Œæ­£åœ¨å®‰è£…å­¦ä¹ å¹³å°ä¾èµ–ï¼Œè¯·ç¨å€™...
+  echo Ê×´ÎÆô¶¯£¬ÕıÔÚ°²×°ÒÀÀµ£¬ÇëÉÔºò...
   call npm install
   if errorlevel 1 (
-    echo ä¾èµ–å®‰è£…å¤±è´¥ï¼Œè¯·æ£€æŸ¥ç½‘ç»œä¸ Node.js ç¯å¢ƒã€‚
+    echo ÒÀÀµ°²×°Ê§°Ü£¬Çë¼ì²éÍøÂçÓë Node.js »·¾³¡£
     pause
     exit /b 1
   )
 )
 
-echo å­¦ä¹ å¹³å°æ­£åœ¨å¯åŠ¨ï¼šhttp://localhost:4173
+echo Ñ§Ï°Æ½Ì¨ÕıÔÚÆô¶¯: http://localhost:4173
 start "" /b powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 2; Start-Process 'http://localhost:4173'"
 call npm run dev
