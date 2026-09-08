@@ -5,6 +5,10 @@ __pycache__/
 data/
 .env
 
+# 个人学习资料：本地保留，不进代码仓库
+plan/
+.workbuddy/
+
 # 构建产物与依赖
 node_modules/
 *.tsbuildinfo
