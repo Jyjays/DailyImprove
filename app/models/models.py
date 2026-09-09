@@ -143,6 +143,22 @@ class CheckIn(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
 
 
+class Favorite(Base):
+    """知识条目收藏。
+
+    单独建表而不是在 items 上打标记，原因：
+      - 收藏不受"近 N 天"时间窗影响，需要能独立查
+      - 抓取产物被 reset_items.py 清空时，收藏随之级联删除，不留悬空记录
+    """
+    __tablename__ = "favorites"
+    __table_args__ = (UniqueConstraint("item_id", name="uq_favorite_item"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    item_id = Column(Integer, ForeignKey("items.id", ondelete="CASCADE"), nullable=False, index=True)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+
+
 class Course(Base):
     """课程与学习资料。track 对应三条主线，phase 对应 roadmap 阶段。"""
     __tablename__ = "courses"

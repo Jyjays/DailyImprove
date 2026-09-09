@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.db import get_session
-from app.models.models import CheckIn, Course, Item, Module
+from app.models.models import CheckIn, Course, Favorite, Item, Module, Source
 
 router = APIRouter(prefix="/api/study", tags=["study"])
 
@@ -46,6 +46,27 @@ CATEGORY_LABELS = {
     "drone": "横向",
     "blocker": "卡点",
 }
+
+# 知识条目的类型：论文 / 新闻 / 博客
+KIND_LABELS = {"paper": "论文", "news": "新闻", "blog": "博客"}
+KIND_ORDER = ["paper", "news", "blog"]
+
+# 判定依据（先 URL 域名，再来源名，最后标题特征）
+_PAPER_HOSTS = (
+    "arxiv.org", "openreview.net", "pmlr.press", "proceedings.mlr.press",
+    "dl.acm.org", "acm.org", "neurips.cc", "jmlr.org", "biorxiv.org",
+    "ieeexplore.ieee.org", "link.springer.com", "sciencedirect.com", "nature.com",
+)
+_NEWS_HOSTS = (
+    "news.ycombinator.com", "hnrss.org", "jiqizhixin.com", "qbitai.com",
+    "36kr.com", "infoq.cn", "ithome.com", "leiphone.com", "syncedreview.com",
+    "techcrunch.com", "theverge.com", "venturebeat.com",
+)
+_PAPER_NAME_KEYS = ("arxiv", "论文", "paper", "preprint")
+_NEWS_NAME_KEYS = ("hacker news", "hnrss", "快讯", "新闻", "机器之心", "量子位", "36氪", "infoq")
+
+# arXiv 标题特征：[cs.CL] xxx  /  arXiv:2601.01234
+_ARXIV_TITLE_RE = re.compile(r"(^\[[a-z]{2}\.[a-z]{2}\])|(arxiv:\d{4}\.\d{4,5})", re.I)
 
 
 # --------------------------------------------------------------------------
@@ -75,7 +96,35 @@ def _parse_llm_output(raw: str | None) -> dict[str, Any]:
         return {}
 
 
-def _item_to_knowledge(item: Item, module_name: str = "") -> dict[str, Any]:
+def _classify_kind(item: Item, source_name: str = "") -> str:
+    """判定条目类型：paper / news / blog。
+
+    依据优先级：URL 域名 > 来源名 > 标题特征 > 兜底 blog。
+    判不出来时归为 blog（RSS 订阅源里博客占比最高），不猜测、不编造。
+    """
+    url = (item.url or "").lower()
+    name = (source_name or "").lower()
+    title = (item.title or "").lower()
+
+    if any(h in url for h in _PAPER_HOSTS):
+        return "paper"
+    if any(h in url for h in _NEWS_HOSTS):
+        return "news"
+    if any(k in name for k in _PAPER_NAME_KEYS):
+        return "paper"
+    if any(k in name for k in _NEWS_NAME_KEYS):
+        return "news"
+    if _ARXIV_TITLE_RE.search(title or ""):
+        return "paper"
+    return "blog"
+
+
+def _item_to_knowledge(
+    item: Item,
+    module_name: str = "",
+    source_name: str = "",
+    fav_ids: set[int] | None = None,
+) -> dict[str, Any]:
     """把 Item 转成前端知识卡片。
 
     优先级：LLM 生成的中文摘要 > 数据库 summary > 正文截断。
@@ -86,12 +135,23 @@ def _item_to_knowledge(item: Item, module_name: str = "") -> dict[str, Any]:
     fallback = (item.summary or "").strip()
     body = (item.raw_content or "").strip()
 
+    # 展示日期：有发布时间用发布时间，否则用入库时间，并标注来源，避免误导
+    if item.published_at:
+        show_dt, date_source = item.published_at, "published"
+    else:
+        show_dt, date_source = item.fetched_at, "fetched"
+
     return {
         "id": item.id,
         "title": item.title or "(无标题)",
         "url": item.url or "",
         "module": module_name,
         "module_id": item.module_id,
+        "kind": _classify_kind(item, source_name),
+        "source_name": source_name or "",
+        "date": show_dt.date().isoformat() if show_dt else None,
+        "date_source": date_source,           # published=发布时间 / fetched=入库时间
+        "is_favorite": bool(fav_ids and item.id in fav_ids),
         # 三个层级的摘要，前端按需选用
         "ai_summary": ai_summary,                       # LLM 中文摘要（首选）
         "origin_summary": fallback,                     # RSS 原文摘要
@@ -243,22 +303,45 @@ def _rewrite_md_checklist(md_path: Path, updates: dict[str, dict[str, str]]) -> 
 
 @router.get("/knowledge")
 def list_knowledge(
+    kind: str | None = None,
     module_key: str | None = None,
-    limit: int = 50,
-    has_ai: bool = False,
+    days: int = 7,
     q: str | None = None,
+    has_ai: bool = False,
+    favorite: bool = False,
+    page: int = 1,
+    page_size: int = 12,
     session: Session = Depends(get_session),
 ):
-    """知识条目列表。默认按入库时间倒序。
+    """知识条目列表（分页）。
 
-    has_ai=true 只返回有 LLM 摘要的；q 在标题/摘要里做关键词过滤。
+    days      默认 7，只返回近 N 天入库的；传 0 表示不限时间（收藏页用）。
+    kind      paper / news / blog，不传即全部。
+    favorite  true 时只返回已收藏的（此时 days 传 0 才能看到全部收藏）。
+    page_size 默认 12，最多 50。
     """
-    stmt = session.query(Item, Module.name).outerjoin(Module, Item.module_id == Module.id)
+    page = max(1, page)
+    page_size = max(1, min(50, page_size))
+
+    stmt = (
+        session.query(Item, Module.name, Source.name)
+        .outerjoin(Module, Item.module_id == Module.id)
+        .outerjoin(Source, Item.source_id == Source.id)
+    )
     if module_key:
         stmt = stmt.filter(Module.key == module_key)
-    rows = stmt.order_by(desc(Item.id)).limit(limit * 3).all()
+    if days and days > 0:
+        stmt = stmt.filter(Item.fetched_at >= datetime.now() - timedelta(days=days))
+    if favorite:
+        stmt = stmt.join(Favorite, Favorite.item_id == Item.id)
 
-    items = [_item_to_knowledge(it, name or "") for it, name in rows]
+    # 上限防御：条目规模可控，但避免一次捞出整个库
+    rows = stmt.order_by(desc(Item.id)).limit(5000).all()
+
+    # 收藏集合一次查完，避免 N+1
+    fav_ids = {r[0] for r in session.query(Favorite.item_id).all()}
+
+    items = [_item_to_knowledge(it, name or "", sname or "", fav_ids) for it, name, sname in rows]
 
     if has_ai:
         items = [x for x in items if x["has_ai_summary"]]
@@ -272,23 +355,64 @@ def list_knowledge(
             or any(kw in t.lower() for t in x["tags"])
         ]
 
+    # 类型计数：在「除类型外的其它筛选」之上统计，保证切换 tab 时数字稳定
+    kind_counts: dict[str, int] = {"all": len(items)}
+    for k in KIND_ORDER:
+        kind_counts[k] = sum(1 for x in items if x["kind"] == k)
+
+    if kind:
+        items = [x for x in items if x["kind"] == kind]
+
     total = len(items)
-    return {"total": total, "items": items[:limit]}
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    page = min(page, total_pages)
+    start = (page - 1) * page_size
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "days": days,
+        "kind": kind,
+        "kind_counts": kind_counts,
+        "favorite_count": len(fav_ids),
+        "items": items[start:start + page_size],
+    }
+
+
+@router.post("/knowledge/{item_id}/favorite")
+def toggle_favorite(item_id: int, session: Session = Depends(get_session)):
+    """收藏 / 取消收藏。返回操作后的状态。"""
+    if not session.query(Item).filter(Item.id == item_id).first():
+        raise HTTPException(status_code=404, detail="条目不存在")
+
+    fav = session.query(Favorite).filter(Favorite.item_id == item_id).first()
+    if fav:
+        session.delete(fav)
+        session.commit()
+        return {"id": item_id, "favorited": False}
+
+    session.add(Favorite(item_id=item_id))
+    session.commit()
+    return {"id": item_id, "favorited": True}
 
 
 @router.get("/knowledge/{item_id}")
 def get_knowledge(item_id: int, session: Session = Depends(get_session)):
     """单条知识详情（含正文全文）。"""
     row = (
-        session.query(Item, Module.name)
+        session.query(Item, Module.name, Source.name)
         .outerjoin(Module, Item.module_id == Module.id)
+        .outerjoin(Source, Item.source_id == Source.id)
         .filter(Item.id == item_id)
         .first()
     )
     if not row:
         raise HTTPException(status_code=404, detail="条目不存在")
-    item, name = row
-    data = _item_to_knowledge(item, name or "")
+    item, name, sname = row
+    fav_ids = {r[0] for r in session.query(Favorite.item_id).filter(Favorite.item_id == item_id).all()}
+    data = _item_to_knowledge(item, name or "", sname or "", fav_ids)
     data["body"] = item.raw_content or ""
     return data
 

@@ -153,6 +153,35 @@
 }
 .search input { width: 220px; border: 0; outline: none; background: transparent; font-size: 13px; }
 .switch { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12.5px; cursor: pointer; }
+.days-select {
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid var(--line);
+  color: #4a4b45;
+  font-size: 12.5px;
+}
+
+/* ---------- 类型切换 ---------- */
+.kind-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: -8px 0 22px; }
+.kind-tab {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, .5);
+  border: 1px solid var(--line);
+  color: #56574f;
+  font-size: 12.5px;
+  transition: .18s;
+}
+.kind-tab:hover { border-color: #b3aea2; }
+.kind-tab.on { background: var(--night); border-color: var(--night); color: #f8f4ea; }
+.kind-tab em {
+  font: 600 10.5px/1 'IBM Plex Mono', monospace;
+  font-style: normal;
+  padding: 2px 6px;
+  background: #e7e3d9;
+  color: #6a6b64;
+}
+.kind-tab.on em { background: rgba(255, 255, 255, .16); color: #f8f4ea; }
 
 /* ---------- 知识卡片 ---------- */
 .knowledge-grid {
@@ -172,13 +201,54 @@
 .kcard:hover { border-color: #b3aea2; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(40, 38, 30, .07); }
 .kcard.open { border-color: var(--coral); }
 
-.kcard-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px; }
+.kcard-top { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
+.kcard-gap { flex: 1 1 auto; }
 .kcard-mod {
   font: 600 10px/1.5 'IBM Plex Mono', monospace;
   letter-spacing: .08em;
   color: #8c918d;
   text-transform: uppercase;
 }
+
+/* 类型徽标：论文 / 新闻 / 博客 */
+.kind-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px;
+  font: 600 11px/1.6 'Noto Sans SC', sans-serif;
+  border: 1px solid;
+}
+.kind-chip.paper { background: rgba(23, 126, 137, .1); border-color: rgba(23, 126, 137, .35); color: #10636c; }
+.kind-chip.news  { background: rgba(232, 93, 63, .1); border-color: rgba(232, 93, 63, .35); color: #a8391f; }
+.kind-chip.blog  { background: rgba(120, 110, 90, .1); border-color: rgba(120, 110, 90, .3); color: #6a6353; }
+
+.kcard-date {
+  font: 500 11px/1.6 'IBM Plex Mono', monospace;
+  color: #8c918d;
+  letter-spacing: .03em;
+}
+.kcard-date em {
+  margin-left: 5px;
+  padding: 1px 5px;
+  background: #e7e3d9;
+  font-style: normal;
+  font-size: 10px;
+  color: #6a6b64;
+}
+
+.star-btn {
+  display: grid; place-items: center;
+  width: 26px; height: 26px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #b6b4ab;
+  transition: .16s;
+}
+.star-btn:hover:not(:disabled) { border-color: var(--line); color: var(--coral); }
+.star-btn.on { color: #e8a33c; }
+.star-btn:disabled { opacity: .5; }
+
+.kcard-source { margin: 0 0 10px; font-size: 11.5px; color: var(--muted); }
 .kcard-score {
   padding: 2px 8px;
   background: var(--teal);
@@ -234,6 +304,27 @@
   letter-spacing: .04em;
 }
 .kcard-link:hover { color: var(--coral); text-decoration: underline; }
+
+/* ---------- 分页 ---------- */
+.pager {
+  display: flex; align-items: center; justify-content: center; gap: 18px;
+  margin-top: 30px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+.pager span { color: var(--muted); font-size: 12.5px; }
+.pager span b { color: var(--ink); font-family: 'IBM Plex Mono', monospace; }
+.pager button {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 8px 15px;
+  background: #fff;
+  border: 1px solid var(--line);
+  color: #4a4b45;
+  font-size: 12.5px;
+  transition: .18s;
+}
+.pager button:hover:not(:disabled) { border-color: var(--coral); color: var(--coral); }
+.pager button:disabled { opacity: .4; cursor: not-allowed; }
 
 /* ---------- 课程 ---------- */
 .course-grid {

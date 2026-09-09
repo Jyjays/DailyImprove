@@ -2,11 +2,19 @@
 
 export type CheckinStatus = 'done' | 'partial' | 'todo' | 'blocked'
 
+export type KnowledgeKind = 'paper' | 'news' | 'blog'
+
 export interface KnowledgeItem {
   id: number
   title: string
   url: string
   module: string
+  kind: KnowledgeKind
+  source_name: string
+  /** 展示用日期：发布时间优先，没有则用入库时间 */
+  date: string | null
+  date_source: 'published' | 'fetched'
+  is_favorite: boolean
   ai_summary: string
   origin_summary: string
   body_excerpt: string
@@ -19,6 +27,18 @@ export interface KnowledgeItem {
   published_at: string | null
   fetched_at: string | null
   has_ai_summary: boolean
+}
+
+export interface KnowledgeResult {
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+  days: number
+  kind: string | null
+  kind_counts: Record<string, number>
+  favorite_count: number
+  items: KnowledgeItem[]
 }
 
 export interface ChecklistRow {
@@ -74,19 +94,34 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
-/** 知识条目列表 */
+/** 知识条目列表（分页） */
 export function fetchKnowledge(params: {
-  limit?: number
+  kind?: KnowledgeKind | 'all'
+  days?: number          // 0 表示不限时间
   has_ai?: boolean
+  favorite?: boolean
   q?: string
   module_key?: string
+  page?: number
+  page_size?: number
 } = {}) {
   const qs = new URLSearchParams()
-  if (params.limit) qs.set('limit', String(params.limit))
+  if (params.kind && params.kind !== 'all') qs.set('kind', params.kind)
+  if (params.days !== undefined) qs.set('days', String(params.days))
   if (params.has_ai) qs.set('has_ai', 'true')
+  if (params.favorite) qs.set('favorite', 'true')
   if (params.q) qs.set('q', params.q)
   if (params.module_key) qs.set('module_key', params.module_key)
-  return request<{ total: number; items: KnowledgeItem[] }>(`/knowledge?${qs}`)
+  if (params.page) qs.set('page', String(params.page))
+  if (params.page_size) qs.set('page_size', String(params.page_size))
+  return request<KnowledgeResult>(`/knowledge?${qs}`)
+}
+
+/** 收藏 / 取消收藏（切换），返回操作后的状态 */
+export function toggleFavorite(id: number) {
+  return request<{ id: number; favorited: boolean }>(`/knowledge/${id}/favorite`, {
+    method: 'POST',
+  })
 }
 
 /** 单条知识详情（含正文） */

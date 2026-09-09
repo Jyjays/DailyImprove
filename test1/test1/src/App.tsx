@@ -1,24 +1,36 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  BookOpen, CalendarCheck, ChevronRight, Code2, ExternalLink, GraduationCap,
-  Lightbulb, Loader2, Save, Search, Tag, CheckCircle2, Circle, AlertCircle, HelpCircle,
+  BookOpen, CalendarCheck, ChevronLeft, ChevronRight, Code2, ExternalLink,
+  FileText, GraduationCap, Lightbulb, Loader2, Newspaper, Rss, Save, Search, Star, Tag,
+  CheckCircle2, Circle, AlertCircle, HelpCircle,
 } from 'lucide-react'
-import type { CheckinStatus, CourseItem, KnowledgeItem, TodayPlan } from './lib/api'
+import type {
+  CheckinStatus, CourseItem, KnowledgeItem, KnowledgeKind, KnowledgeResult, TodayPlan,
+} from './lib/api'
 import {
   CATEGORY_LABELS, fetchCheckin, fetchCourses, fetchKnowledge, fetchToday, saveCheckin,
-  updateCourse,
+  toggleFavorite, updateCourse,
 } from './lib/api'
 import { interviewQuestions } from './data/interview'
 import { Markdown } from './components/Markdown'
 
-type View = 'today' | 'knowledge' | 'courses' | 'practice'
+type View = 'today' | 'knowledge' | 'favorites' | 'courses' | 'practice'
 
 const navItems: Array<{ id: View; label: string; icon: any; hint: string }> = [
   { id: 'today', label: '今日', icon: CalendarCheck, hint: '计划与打卡' },
-  { id: 'knowledge', label: '知识', icon: BookOpen, hint: '论文与博客' },
+  { id: 'knowledge', label: '知识', icon: BookOpen, hint: '论文 · 新闻 · 博客' },
+  { id: 'favorites', label: '收藏', icon: Star, hint: '重点条目' },
   { id: 'courses', label: '课程', icon: GraduationCap, hint: '课程与资料' },
   { id: 'practice', label: '练习', icon: Code2, hint: '面经与编码' },
 ]
+
+/** 知识类型 -> 中文标签与图标 */
+const KIND_META: Record<KnowledgeKind, { label: string; icon: any }> = {
+  paper: { label: '论文', icon: FileText },
+  news: { label: '新闻', icon: Newspaper },
+  blog: { label: '博客', icon: Rss },
+}
+const KIND_ORDER: Array<KnowledgeKind | 'all'> = ['all', 'paper', 'news', 'blog']
 
 const STATUS_ICON: Record<CheckinStatus, any> = {
   done: CheckCircle2, partial: AlertCircle, todo: Circle, blocked: HelpCircle,
@@ -55,6 +67,7 @@ export default function App() {
       <main className="main">
         {view === 'today' && <TodayPage />}
         {view === 'knowledge' && <KnowledgePage />}
+        {view === 'favorites' && <KnowledgePage favoriteOnly />}
         {view === 'courses' && <CoursesPage />}
         {view === 'practice' && <PracticePage />}
       </main>
@@ -238,33 +251,80 @@ function TodayPage() {
 /* 知识：论文 / 博客卡片流                                              */
 /* ------------------------------------------------------------------ */
 
-function KnowledgePage() {
-  const [items, setItems] = useState<KnowledgeItem[]>([])
-  const [total, setTotal] = useState(0)
+const PAGE_SIZE = 12
+const DAY_OPTIONS = [
+  { value: 7, label: '近 7 天' },
+  { value: 14, label: '近 14 天' },
+  { value: 30, label: '近 30 天' },
+  { value: 0, label: '全部' },
+]
+
+function KnowledgePage({ favoriteOnly = false }: { favoriteOnly?: boolean }) {
+  const [data, setData] = useState<KnowledgeResult | null>(null)
+  const [kind, setKind] = useState<KnowledgeKind | 'all'>('all')
   const [q, setQ] = useState('')
   const [onlyAi, setOnlyAi] = useState(true)
+  const [days, setDays] = useState(7)
+  const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [openId, setOpenId] = useState<number | null>(null)
+  const [busyId, setBusyId] = useState<number | null>(null)
 
+  // 收藏页不受时间窗限制：days=0
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const d = await fetchKnowledge({ limit: 60, has_ai: onlyAi, q: q || undefined })
-      setItems(d.items); setTotal(d.total)
-    } catch { setItems([]) } finally { setLoading(false) }
-  }, [q, onlyAi])
+      setData(await fetchKnowledge({
+        kind,
+        q: q || undefined,
+        has_ai: onlyAi,
+        favorite: favoriteOnly,
+        days: favoriteOnly ? 0 : days,
+        page,
+        page_size: PAGE_SIZE,
+      }))
+    } catch { setData(null) } finally { setLoading(false) }
+  }, [kind, q, onlyAi, days, page, favoriteOnly])
 
   useEffect(() => {
-    const t = setTimeout(load, 250)
+    const t = setTimeout(load, q ? 250 : 0)
     return () => clearTimeout(t)
   }, [load])
+
+  // 筛选条件一变就回到第一页，否则会停在一个不存在的页码上
+  useEffect(() => { setPage(1) }, [kind, q, onlyAi, days, favoriteOnly])
+
+  /** 收藏切换：先本地乐观更新，失败再整体重载回滚 */
+  const fav = async (it: KnowledgeItem) => {
+    const next = !it.is_favorite
+    setData((d) => d && {
+      ...d,
+      favorite_count: Math.max(0, d.favorite_count + (next ? 1 : -1)),
+      items: d.items.map((x) => (x.id === it.id ? { ...x, is_favorite: next } : x)),
+    })
+    setBusyId(it.id)
+    try {
+      await toggleFavorite(it.id)
+      if (favoriteOnly) await load()   // 收藏页里取消收藏后要移出列表
+    } catch {
+      await load()
+    } finally { setBusyId(null) }
+  }
+
+  const counts = data?.kind_counts ?? {}
+  const items = data?.items ?? []
+  const totalPages = data?.total_pages ?? 1
 
   return (
     <div className="page">
       <header className="page-head">
         <div>
-          <p className="eyebrow">论文 · 博客 · 由 LLM 提炼</p>
-          <h1>知识流</h1>
+          <p className="eyebrow">
+            {favoriteOnly
+              ? `收藏 · ${data?.favorite_count ?? 0} 条 · 不受更新时间影响`
+              : '论文 · 新闻 · 博客 · 由 LLM 提炼'}
+          </p>
+          <h1>{favoriteOnly ? '我的收藏' : '知识流'}</h1>
         </div>
         <div className="filters">
           <label className="search">
@@ -275,58 +335,127 @@ function KnowledgePage() {
             <input type="checkbox" checked={onlyAi} onChange={(e) => setOnlyAi(e.target.checked)} />
             只看有 AI 摘要的
           </label>
+          {!favoriteOnly && (
+            <select className="days-select" value={days} onChange={(e) => setDays(Number(e.target.value))}>
+              {DAY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          )}
         </div>
       </header>
 
+      <div className="kind-tabs">
+        {KIND_ORDER.map((k) => {
+          const meta = k === 'all' ? null : KIND_META[k]
+          const Icon = meta?.icon
+          const n = k === 'all' ? (counts.all ?? 0) : (counts[k] ?? 0)
+          return (
+            <button
+              key={k}
+              className={`kind-tab ${kind === k ? 'on' : ''}`}
+              onClick={() => setKind(k)}
+            >
+              {Icon ? <Icon size={14} /> : null}
+              {meta?.label ?? '全部'}
+              <em>{n}</em>
+            </button>
+          )
+        })}
+      </div>
+
       {loading ? <Centered><Loader2 className="spin" size={24} /><p>加载中…</p></Centered>
-        : items.length === 0 ? <Centered><p>没有匹配条目（共 {total} 条）</p></Centered>
-        : (
-          <div className="knowledge-grid">
-            {items.map((it) => (
-              <article
-                key={it.id}
-                className={`kcard ${openId === it.id ? 'open' : ''}`}
-                onClick={() => setOpenId(openId === it.id ? null : it.id)}
-              >
-                <div className="kcard-top">
-                  <span className="kcard-mod">{it.module || '未分类'}</span>
-                  {typeof it.score === 'number' && <span className="kcard-score">{Math.round(it.score)}</span>}
-                </div>
-                <h3>{it.title}</h3>
+        : items.length === 0 ? (
+          <Centered>
+            <p>没有匹配条目（共 {data?.total ?? 0} 条）</p>
+            {favoriteOnly && <p className="dim">在知识流里点卡片右上角的星标即可收藏。</p>}
+          </Centered>
+        ) : (
+          <>
+            <div className="knowledge-grid">
+              {items.map((it) => {
+                const meta = KIND_META[it.kind] ?? KIND_META.blog
+                const KIcon = meta.icon
+                return (
+                  <article
+                    key={it.id}
+                    className={`kcard ${openId === it.id ? 'open' : ''}`}
+                    onClick={() => setOpenId(openId === it.id ? null : it.id)}
+                  >
+                    <div className="kcard-top">
+                      <span className={`kind-chip ${it.kind}`}>
+                        <KIcon size={12} />{meta.label}
+                      </span>
+                      <span
+                        className="kcard-date"
+                        title={it.date_source === 'published' ? '发布时间' : '入库时间'}
+                      >
+                        {it.date ?? '—'}
+                        {it.date_source === 'fetched' && <em>入库</em>}
+                      </span>
+                      <span className="kcard-gap" />
+                      {typeof it.score === 'number' && <span className="kcard-score">{Math.round(it.score)}</span>}
+                      <button
+                        type="button"
+                        className={`star-btn ${it.is_favorite ? 'on' : ''}`}
+                        title={it.is_favorite ? '取消收藏' : '收藏'}
+                        disabled={busyId === it.id}
+                        onClick={(e) => { e.stopPropagation(); fav(it) }}
+                      >
+                        <Star size={15} fill={it.is_favorite ? 'currentColor' : 'none'} />
+                      </button>
+                    </div>
 
-                {it.ai_summary
-                  ? <Markdown className="kcard-summary" text={it.ai_summary} />
-                  : <p className="kcard-summary empty">暂无 AI 摘要</p>}
+                    <h3>{it.title}</h3>
 
-                {it.reason && <p className="kcard-reason"><Lightbulb size={13} /> {it.reason}</p>}
+                    {it.ai_summary
+                      ? <Markdown className="kcard-summary" text={it.ai_summary} />
+                      : <p className="kcard-summary empty">暂无 AI 摘要</p>}
 
-                {it.tags?.length > 0 && (
-                  <div className="kcard-tags">
-                    {it.tags.map((t) => <span key={t}><Tag size={11} />{t}</span>)}
-                  </div>
-                )}
+                    {it.reason && <p className="kcard-reason"><Lightbulb size={13} /> {it.reason}</p>}
 
-                {openId === it.id && (
-                  <div className="kcard-body">
-                    {it.body_excerpt && <p className="kcard-excerpt">{it.body_excerpt}</p>}
-                    {it.origin_summary && (
-                      <details>
-                        <summary>原文摘要</summary>
-                        <p>{it.origin_summary}</p>
-                      </details>
+                    {it.tags?.length > 0 && (
+                      <div className="kcard-tags">
+                        {it.tags.map((t) => <span key={t}><Tag size={11} />{t}</span>)}
+                      </div>
                     )}
-                  </div>
-                )}
 
-                {it.url && (
-                  <a className="kcard-link" href={it.url} target="_blank" rel="noreferrer"
-                     onClick={(e) => e.stopPropagation()}>
-                    深入阅读原文 <ExternalLink size={13} />
-                  </a>
-                )}
-              </article>
-            ))}
-          </div>
+                    {openId === it.id && (
+                      <div className="kcard-body">
+                        <p className="kcard-source">来源：{it.source_name || it.module || '—'}</p>
+                        {it.body_excerpt && <p className="kcard-excerpt">{it.body_excerpt}</p>}
+                        {it.origin_summary && (
+                          <details>
+                            <summary>原文摘要</summary>
+                            <p>{it.origin_summary}</p>
+                          </details>
+                        )}
+                      </div>
+                    )}
+
+                    {it.url && (
+                      <a className="kcard-link" href={it.url} target="_blank" rel="noreferrer"
+                         onClick={(e) => e.stopPropagation()}>
+                        深入阅读原文 <ExternalLink size={13} />
+                      </a>
+                    )}
+                  </article>
+                )
+              })}
+            </div>
+
+            {totalPages > 1 && (
+              <nav className="pager">
+                <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  <ChevronLeft size={15} /> 上一页
+                </button>
+                <span>
+                  第 <b>{data?.page ?? 1}</b> / {totalPages} 页 · 共 {data?.total ?? 0} 条
+                </span>
+                <button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                  下一页 <ChevronRight size={15} />
+                </button>
+              </nav>
+            )}
+          </>
         )}
     </div>
   )
