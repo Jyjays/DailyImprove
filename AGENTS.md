@@ -75,6 +75,8 @@
 | `data/dailyimprove.db` | 系统状态（去重、来源评分、运行记录） | 自动 |
 | `data/digest/*.md` | 每次推送的产物 | 自动 |
 | **`test1/test1/`** | **学习平台前端**（知识展示 / 课程 / 打卡 / 练习） | 我 |
+| **云端资料库 · DailyImprove** | 手机查看用的**只读快照**（不是双向同步） | `scripts/sync_to_cloud.py` 推上去 |
+| `.workbuddy/cloud-sync-map.json` | 本地 md ↔ 云端 nodeId 的映射表 | 脚本自动回写新 id |
 
 ---
 
@@ -86,7 +88,8 @@
 |---|---|---|
 | ① 信息抓取 | 抓 RSS / arXiv，去重 + LLM 筛选 + 选材 | `scripts/run_daily.py`（被自动化调用） |
 | ② 日报生成 | **当日收尾总结 + 次日日报**（面经卡片 + 论文速览 + 排程） | WorkBuddy 自动化 **每天 22:00**（先关今天，再铺明天） |
-| ③ 人工 | 填打卡、打勾验收清单 | 用户，每天 5 分钟 |
+| ③ 云端同步 | 把本地 md 推到云端资料库，供手机查看 | `scripts/sync_to_cloud.py`（需 token） |
+| ④ 人工 | 填打卡、打勾验收清单 | 用户，每天 5 分钟 |
 
 > **为什么是晚上 10 点而不是早上 8 点（2026-09-08 改）**：早上生成日报时，昨天的打卡往往是空的，导致「昨日结果」只能写"无法判定"。改成 22:00 后，自动化先给当天日报追加一段「当日收尾总结」（按 7.3 四档语法统计完成情况），再生成**第二天**的日报 —— 此时当天的打卡数据是最新的，「昨日结果」是真实的，不用猜。
 > 副作用：日报文件名是**当天日期**，但实际是前一晚 22:00 生成的。查历史时按文件内容里的日期看，不要按文件 mtime 看。
@@ -142,11 +145,43 @@ npx vite --host 127.0.0.1 --port 4173
 | **练习** | 面经自测（选题 → 提交 → 看解析），题库在 `test1/test1/src/data/interview.ts` |
 
 **踩过的坑（别重蹈）**：
-1. **必须加 `--host 127.0.0.1`** —— 不加 vite 只监听 IPv6 `[::1]`，用 127.0.0.1 打不开。
+1. **必须绑 `127.0.0.1`** —— 不加 host 时 vite 只监听 IPv6 `[::1]`，用 127.0.0.1 打不开。已写进 `vite.config.ts` 的 `server.host` / `preview.host`，命令行里的 `--host` 只是双保险。
 2. **必须设 `NO_PROXY=127.0.0.1,localhost`** —— 环境里有 `HTTP_PROXY`，vite 的 proxy 会走沙箱代理，转发到本机 8000 被拒（502 `upstream connect failed`）。
 3. **vite 读 `vite.config.js` 而不是 `.ts`** —— 前者是 `tsc -b` 的编译产物且优先级更高。改 proxy 配置**两个文件都要改**。
 4. 后端改了模型或 API 后**必须重启**；`checkins` / `courses` 表由 `init_db()` 自动建。
 5. 课程数据用 `python scripts/seed_courses.py` 导入（按 title 去重，可重复跑）。
+6. **`.bat` 必须是 CRLF + GBK** —— 之前重写 git 历史时把 `core.autocrlf` 改成 `input`，两个启动脚本被检出成纯 LF，`cmd.exe` 解析 `if ... (` 括号块直接失败，双击表现为一闪而过。已加 `.gitattributes` 强制 `*.bat / *.cmd / *.ps1` 用 CRLF。**改 .bat 后务必确认换行符没被 git 改回去。**
+7. **`%~dp0` 结尾带反斜杠** —— `start /D "%ROOT%"` 会变成 `"...\"`，反斜杠把结束引号转义掉导致命令截断。脚本里已用 `if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"` 处理。
+
+---
+
+## 6.6 云端资料库（手机查看）
+
+**定位：单向快照，不是双向同步。** 本地是唯一事实来源；云端只用来在手机上读。
+
+云端目录（`我的文档 / DailyImprove`）：
+```
+00 · 云端速览（手机入口）      ← 手机只看这一页就够，内含全部链接
+01 · 准则与规划                 AGENTS / progress / roadmap / 论文线 / 横向
+02 · 台账                       ideas / exercises / cards-index
+03 · 日报                       每天一篇
+04 · 深挖笔记                   精读与调研产出
+```
+
+同步命令（token 由助手通过开放平台取得，脚本不自己换票）：
+
+```bash
+python scripts/sync_to_cloud.py --token <token>            # 全量
+python scripts/sync_to_cloud.py --token <token> --only daily   # 只推日报
+python scripts/sync_to_cloud.py --dry-run                   # 不联网，只看计划
+```
+
+**规则（别踩）**
+1. **已存在 id 的文档走全量覆盖** —— 云端对同名文档的手动修改，下次同步会被本地覆盖。要改就改本地。
+2. **手机上勾的 checkbox 不会回写本地** —— 回电脑后要么在本地 `plan/daily/` 改，要么照着手机重填。
+3. 新日报会被自动创建，新 nodeId 自动回写 `.workbuddy/cloud-sync-map.json`。
+4. 新增要同步的 md：往 `cloud-sync-map.json` 的 `docs` 数组加一行（不带 `id` 即视为新建）。
+5. **同步仍然要求电脑开着** —— 电脑关机时自动化跑不了，云端会停在最后一次同步。这不是 bug，是物理限制。
 
 ---
 
