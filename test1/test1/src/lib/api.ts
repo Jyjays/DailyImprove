@@ -168,6 +168,97 @@ export function fetchCourses(track?: string) {
   return request<{ total: number; items: CourseItem[] }>(`/courses${qs}`)
 }
 
+/* ---------------------------------------------------------------------- */
+/* 个人博客 / 知识库                                                        */
+/* ---------------------------------------------------------------------- */
+
+export interface BlogNode {
+  type: 'dir' | 'file'
+  name: string
+  path: string
+  title?: string
+  tags?: string[]
+  item_id?: number | null
+  updated_at?: string
+  size?: number
+  excerpt?: string
+  children?: BlogNode[]
+}
+
+export interface BlogDoc {
+  path: string
+  title: string
+  tags: string[]
+  item_id: number | null
+  content: string          // 正文（不含 front matter）
+  raw: string              // 含 front matter
+  updated_at: string
+  item: KnowledgeItem | null
+}
+
+export interface BlogNote {
+  item_id: number
+  exists: boolean
+  path: string
+  title: string
+  content: string
+  item: KnowledgeItem | null
+}
+
+export function fetchBlogTree() {
+  return request<{ root: string; note_dir: string; tree: BlogNode[] }>('/blog/tree')
+}
+
+export function fetchBlogDoc(path: string) {
+  return request<BlogDoc>(`/blog/doc?path=${encodeURIComponent(path)}`)
+}
+
+export function saveBlogDoc(payload: {
+  path: string
+  content?: string
+  title?: string
+  tags?: string[]
+  item_id?: number | null
+}) {
+  return request<{ ok: boolean; path: string; title: string }>('/blog/doc', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function createBlogFolder(path: string) {
+  return request<{ ok: boolean; path: string }>('/blog/folder', {
+    method: 'POST',
+    body: JSON.stringify({ path }),
+  })
+}
+
+export function renameBlogNode(path: string, newPath: string) {
+  return request<{ ok: boolean; path: string }>('/blog/rename', {
+    method: 'POST',
+    body: JSON.stringify({ path, new_path: newPath }),
+  })
+}
+
+export function deleteBlogNode(path: string) {
+  return request<{ ok: boolean; path: string }>(`/blog/node?path=${encodeURIComponent(path)}`, {
+    method: 'DELETE',
+  })
+}
+
+/** 读某条知识的笔记（不存在时返回建议路径，content 为空） */
+export function fetchNote(itemId: number) {
+  return request<BlogNote>(`/blog/note/${itemId}`)
+}
+
+/** 写笔记；content 为空时后端会按模板生成骨架 */
+export function saveNote(itemId: number, content: string) {
+  return request<{ ok: boolean; path: string; item_id: number }>(`/blog/note/${itemId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ content }),
+  })
+}
+
 /** 新增课程 */
 export function createCourse(payload: Omit<CourseItem, 'id'>) {
   return request<{ ok: boolean; id: number }>('/courses', {

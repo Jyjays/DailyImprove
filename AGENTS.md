@@ -122,7 +122,7 @@
 
 ---
 
-## 6.5 学习平台（知识 / 课程 / 打卡 / 练习）
+## 6.5 学习平台（知识 / 收藏笔记 / 博客 / 课程 / 打卡 / 练习）
 
 前端在 `test1/test1/`（Vite + React），数据来自后端新增的 `/api/study/*`。**开两个终端**：
 
@@ -153,6 +153,14 @@ npx vite --host 127.0.0.1 --port 4173
 **日期显示规则**：有 `published_at` 用发布时间，没有则退到 `fetched_at` 并标一个「入库」小标签 —— 不编造日期。
 
 **收藏实现**：独立 `favorites` 表（`item_id` 唯一 + 级联删除），不是在 `items` 上打标记。收藏页传 `days=0` 跳过时间窗，所以条目过期也能一直看到。接口 `POST /api/study/knowledge/{id}/favorite` 是切换语义。
+
+**笔记 + 个人博客实现**（后端 `app/web/blog_api.py`，前缀 `/api/study/blog`）：
+- **目录即事实来源**：`blog/` 下的真实目录结构就是唯一组织方式，不做额外索引文件，从根上避免「索引与磁盘不一致」。
+- **元信息写在 YAML front matter 里**（`title` / `tags` / `item_id` / `source_url`），文档自解释，拷走、换工具、用 Obsidian 打开都能读。
+- **收藏笔记不是另一套东西**：就是 `blog/收藏笔记/<id>-<slug>.md`，front matter 里多一个 `item_id`，于是博客里能反查回知识卡片，收藏里能一键跳文档。
+- **接口**：`GET /tree`（目录树）、`GET/PUT /doc`（读/写单篇，自动建父目录）、`POST /folder`（建目录）、`POST /rename`、`DELETE /node`（目录递归删）、`GET/PUT /note/{item_id}`（读/写收藏笔记，不存在按模板创建）。
+- **安全**：`_safe_path()` 解析相对路径后必须仍在 `blog/` 内，否则 400，防目录穿越。
+- **依赖**：`pyyaml`（解析 front matter）；`blog/` 目录已加进 `.gitignore`，是私人内容不进仓库。
 
 **踩过的坑（别重蹈）**：
 1. **必须绑 `127.0.0.1`** —— 不加 host 时 vite 只监听 IPv6 `[::1]`，用 127.0.0.1 打不开。已写进 `vite.config.ts` 的 `server.host` / `preview.host`，命令行里的 `--host` 只是双保险。

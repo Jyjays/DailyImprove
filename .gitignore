@@ -8,6 +8,8 @@ data/
 # 个人学习资料：本地保留，不进代码仓库
 plan/
 .workbuddy/
+# 个人博客 / 知识库（含收藏笔记）：同样是私人内容
+blog/
 
 # 构建产物与依赖
 node_modules/

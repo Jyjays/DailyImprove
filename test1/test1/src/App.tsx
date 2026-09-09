@@ -1,25 +1,29 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  BookOpen, CalendarCheck, ChevronLeft, ChevronRight, Code2, ExternalLink,
-  FileText, GraduationCap, Lightbulb, Loader2, Newspaper, Rss, Save, Search, Star, Tag,
-  CheckCircle2, Circle, AlertCircle, HelpCircle,
+  BookOpen, CalendarCheck, ChevronDown, ChevronLeft, ChevronRight, Code2, Edit3,
+  ExternalLink, Eye, FilePlus, FileText, Folder, FolderOpen, FolderPlus, GraduationCap,
+  Lightbulb, Link2, Loader2, Newspaper, PenLine, Pencil, Rss, Save, Search, Star, Tag,
+  Trash2, CheckCircle2, Circle, AlertCircle, HelpCircle,
 } from 'lucide-react'
 import type {
-  CheckinStatus, CourseItem, KnowledgeItem, KnowledgeKind, KnowledgeResult, TodayPlan,
+  BlogDoc, BlogNode, CheckinStatus, CourseItem, KnowledgeItem, KnowledgeKind,
+  KnowledgeResult, TodayPlan,
 } from './lib/api'
 import {
-  CATEGORY_LABELS, fetchCheckin, fetchCourses, fetchKnowledge, fetchToday, saveCheckin,
-  toggleFavorite, updateCourse,
+  CATEGORY_LABELS, createBlogFolder, deleteBlogNode, fetchBlogDoc, fetchBlogTree,
+  fetchCheckin, fetchCourses, fetchKnowledge, fetchNote, fetchToday, renameBlogNode,
+  saveBlogDoc, saveCheckin, saveNote, toggleFavorite, updateCourse,
 } from './lib/api'
 import { interviewQuestions } from './data/interview'
 import { Markdown } from './components/Markdown'
 
-type View = 'today' | 'knowledge' | 'favorites' | 'courses' | 'practice'
+type View = 'today' | 'knowledge' | 'favorites' | 'blog' | 'courses' | 'practice'
 
 const navItems: Array<{ id: View; label: string; icon: any; hint: string }> = [
   { id: 'today', label: '今日', icon: CalendarCheck, hint: '计划与打卡' },
   { id: 'knowledge', label: '知识', icon: BookOpen, hint: '论文 · 新闻 · 博客' },
   { id: 'favorites', label: '收藏', icon: Star, hint: '重点条目' },
+  { id: 'blog', label: '博客', icon: PenLine, hint: '笔记与知识库' },
   { id: 'courses', label: '课程', icon: GraduationCap, hint: '课程与资料' },
   { id: 'practice', label: '练习', icon: Code2, hint: '面经与编码' },
 ]
@@ -39,6 +43,17 @@ const STATUS_ORDER: CheckinStatus[] = ['done', 'partial', 'todo', 'blocked']
 
 export default function App() {
   const [view, setView] = useState<View>('today')
+  // 从知识卡片跳到博客时，指定要打开的文档路径
+  const [blogTarget, setBlogTarget] = useState<string | null>(null)
+
+  /** 打开（必要时先创建）某条知识的笔记，然后切到博客页 */
+  const openNote = async (it: KnowledgeItem) => {
+    const n = await fetchNote(it.id)
+    if (!n.exists) await saveNote(it.id, '')
+    setBlogTarget(n.path)
+    setView('blog')
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -66,8 +81,9 @@ export default function App() {
       </aside>
       <main className="main">
         {view === 'today' && <TodayPage />}
-        {view === 'knowledge' && <KnowledgePage />}
-        {view === 'favorites' && <KnowledgePage favoriteOnly />}
+        {view === 'knowledge' && <KnowledgePage onNote={openNote} />}
+        {view === 'favorites' && <KnowledgePage favoriteOnly onNote={openNote} />}
+        {view === 'blog' && <BlogPage target={blogTarget} onTargetOpened={() => setBlogTarget(null)} />}
         {view === 'courses' && <CoursesPage />}
         {view === 'practice' && <PracticePage />}
       </main>
@@ -259,7 +275,13 @@ const DAY_OPTIONS = [
   { value: 0, label: '全部' },
 ]
 
-function KnowledgePage({ favoriteOnly = false }: { favoriteOnly?: boolean }) {
+function KnowledgePage({
+  favoriteOnly = false,
+  onNote,
+}: {
+  favoriteOnly?: boolean
+  onNote?: (it: KnowledgeItem) => void
+}) {
   const [data, setData] = useState<KnowledgeResult | null>(null)
   const [kind, setKind] = useState<KnowledgeKind | 'all'>('all')
   const [q, setQ] = useState('')
@@ -393,6 +415,16 @@ function KnowledgePage({ favoriteOnly = false }: { favoriteOnly?: boolean }) {
                       </span>
                       <span className="kcard-gap" />
                       {typeof it.score === 'number' && <span className="kcard-score">{Math.round(it.score)}</span>}
+                      {onNote && (
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          title="写笔记（存到博客）"
+                          onClick={(e) => { e.stopPropagation(); onNote(it) }}
+                        >
+                          <PenLine size={14} />
+                        </button>
+                      )}
                       <button
                         type="button"
                         className={`star-btn ${it.is_favorite ? 'on' : ''}`}
@@ -457,6 +489,339 @@ function KnowledgePage({ favoriteOnly = false }: { favoriteOnly?: boolean }) {
             )}
           </>
         )}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* 博客：本地 md 文档树 + 收藏笔记                                       */
+/* ------------------------------------------------------------------ */
+
+const NEW_DOC_BODY = '# 新文档\n\n开始写点什么。\n'
+
+/** 递归目录树。定义在组件外，避免每次渲染重建导致输入焦点丢失 */
+function BlogTree({
+  nodes, depth, expanded, active, onToggle, onOpen, onDelete,
+}: {
+  nodes: BlogNode[]
+  depth: number
+  expanded: Set<string>
+  active: string | null
+  onToggle: (p: string) => void
+  onOpen: (p: string) => void
+  onDelete: (p: string, isDir: boolean) => void
+}) {
+  return (
+    <ul className="blog-tree" style={{ paddingLeft: depth === 0 ? 0 : 15 }}>
+      {nodes.map((n) => {
+        if (n.type === 'dir') {
+          const isOpen = expanded.has(n.path)
+          return (
+            <li key={n.path}>
+              <div className="blog-row">
+                <button type="button" className="blog-twist" onClick={() => onToggle(n.path)}>
+                  {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                </button>
+                <button type="button" className="blog-name" onClick={() => onToggle(n.path)}>
+                  {isOpen ? <FolderOpen size={14} /> : <Folder size={14} />}
+                  {n.name}
+                </button>
+                <button type="button" className="blog-del" title="删除目录（含全部内容）"
+                        onClick={() => onDelete(n.path, true)}>
+                  <Trash2 size={12} />
+                </button>
+              </div>
+              {isOpen && n.children && (
+                <BlogTree
+                  nodes={n.children} depth={depth + 1} expanded={expanded} active={active}
+                  onToggle={onToggle} onOpen={onOpen} onDelete={onDelete}
+                />
+              )}
+            </li>
+          )
+        }
+        return (
+          <li key={n.path}>
+            <div className={`blog-row file ${active === n.path ? 'on' : ''}`}>
+              <span className="blog-twist" />
+              <button type="button" className="blog-name" onClick={() => onOpen(n.path)} title={n.title}>
+                <FileText size={14} />{n.title}
+              </button>
+              <button type="button" className="blog-del" title="删除文档"
+                      onClick={() => onDelete(n.path, false)}>
+                <Trash2 size={12} />
+              </button>
+            </div>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+/** 收集所有目录路径，用于默认展开 */
+function collectDirs(nodes: BlogNode[]): string[] {
+  return nodes.flatMap((n) =>
+    n.type === 'dir' ? [n.path, ...collectDirs(n.children ?? [])] : [])
+}
+
+function BlogPage({ target, onTargetOpened }: { target: string | null; onTargetOpened: () => void }) {
+  const [tree, setTree] = useState<BlogNode[]>([])
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [doc, setDoc] = useState<BlogDoc | null>(null)
+  const [draft, setDraft] = useState('')
+  const [title, setTitle] = useState('')
+  const [tags, setTags] = useState('')
+  const [mode, setMode] = useState<'edit' | 'preview'>('edit')
+  const [dirty, setDirty] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [creating, setCreating] = useState<'file' | 'dir' | null>(null)
+  const [newPath, setNewPath] = useState('')
+  const [renaming, setRenaming] = useState(false)
+  const [renameTo, setRenameTo] = useState('')
+
+  const reload = useCallback(async () => {
+    try { setTree((await fetchBlogTree()).tree) } catch { setTree([]) }
+  }, [])
+
+  useEffect(() => { reload() }, [reload])
+
+  const openDoc = useCallback(async (p: string): Promise<boolean> => {
+    setBusy(true); setMsg('')
+    try {
+      const d = await fetchBlogDoc(p)
+      setDoc(d)
+      setDraft(d.content)
+      setTitle(d.title)
+      setTags(d.tags.join(', '))
+      setDirty(false)
+      setMode('edit')
+      return true
+    } catch {
+      return false
+    } finally { setBusy(false) }
+  }, [])
+
+  // 从知识卡片跳过来：文档不存在就先建一个再打开
+  useEffect(() => {
+    if (!target) return
+    let cancelled = false
+    ;(async () => {
+      let ok = await openDoc(target)
+      if (!ok) {
+        try {
+          await saveBlogDoc({ path: target, content: NEW_DOC_BODY })
+          ok = await openDoc(target)
+        } catch { /* 打开失败时下面统一提示 */ }
+      }
+      if (!cancelled) {
+        if (!ok) setMsg(`打不开文档：${target}`)
+        await reload()
+        onTargetOpened()
+      }
+    })()
+    return () => { cancelled = true }
+  }, [target, openDoc, reload, onTargetOpened])
+
+  // 目录结构变化时全量展开（新建/删除后重来；手动折叠会在下次结构性变更时重置）
+  useEffect(() => { setExpanded(new Set(collectDirs(tree))) }, [tree])
+
+  const save = async () => {
+    if (!doc) return
+    setBusy(true); setMsg('')
+    try {
+      const r = await saveBlogDoc({
+        path: doc.path,
+        content: draft,
+        title,
+        tags: tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
+      })
+      setDirty(false)
+      setMsg(`已保存 ${r.path}`)
+      await openDoc(doc.path)
+      await reload()
+    } catch (e) {
+      setMsg(`保存失败：${(e as Error).message}`)
+    } finally { setBusy(false) }
+  }
+
+  const createNode = async () => {
+    const p = newPath.trim().replace(/^\/+|\/+$/g, '')
+    if (!p) return
+    setBusy(true); setMsg('')
+    try {
+      if (creating === 'dir') {
+        await createBlogFolder(p)
+        setMsg(`已创建目录 ${p}`)
+      } else {
+        const fp = p.toLowerCase().endsWith('.md') ? p : `${p}.md`
+        await saveBlogDoc({ path: fp, content: NEW_DOC_BODY, title: fp.split('/').pop()?.replace(/\.md$/, '') })
+        await openDoc(fp)
+      }
+      setNewPath(''); setCreating(null)
+      await reload()
+    } catch (e) {
+      setMsg(`创建失败：${(e as Error).message}`)
+    } finally { setBusy(false) }
+  }
+
+  const remove = async (p: string, isDir: boolean) => {
+    if (!window.confirm(
+      `确定删除${isDir ? '目录（含其中全部文档）' : '文档'}？\n\n${p}\n\n删除后不可恢复。`
+    )) return
+    setBusy(true); setMsg('')
+    try {
+      await deleteBlogNode(p)
+      if (doc?.path === p) { setDoc(null); setDraft('') }
+      await reload()
+    } catch (e) {
+      setMsg(`删除失败：${(e as Error).message}`)
+    } finally { setBusy(false) }
+  }
+
+  const doRename = async () => {
+    if (!doc || !renameTo.trim()) return
+    setBusy(true); setMsg('')
+    try {
+      const r = await renameBlogNode(doc.path, renameTo.trim())
+      setRenaming(false)
+      await openDoc(r.path)
+      await reload()
+      setMsg(`已重命名为 ${r.path}`)
+    } catch (e) {
+      setMsg(`重命名失败：${(e as Error).message}`)
+    } finally { setBusy(false) }
+  }
+
+  const toggle = (p: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(p)) next.delete(p); else next.add(p)
+      return next
+    })
+
+  return (
+    <div className="page">
+      <header className="page-head">
+        <div>
+          <p className="eyebrow">本地 md 文档树 · blog/ 目录即事实来源</p>
+          <h1>我的博客</h1>
+        </div>
+        <div className="filters">
+          <button type="button" className="ghost-btn" onClick={() => { setCreating('file'); setNewPath('') }}>
+            <FilePlus size={14} /> 新建文档
+          </button>
+          <button type="button" className="ghost-btn" onClick={() => { setCreating('dir'); setNewPath('') }}>
+            <FolderPlus size={14} /> 新建目录
+          </button>
+        </div>
+      </header>
+
+      {msg && <div className="toast">{msg}</div>}
+
+      {creating && (
+        <div className="blog-create">
+          <input
+            autoFocus
+            value={newPath}
+            onChange={(e) => setNewPath(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') createNode()
+              if (e.key === 'Escape') setCreating(null)
+            }}
+            placeholder={creating === 'dir' ? '目录名，如 ai-infra/cuda' : '文档路径，如 ai-infra/cuda/notes.md'}
+          />
+          <button type="button" className="primary-button small" onClick={createNode}>创建</button>
+          <button type="button" className="ghost-btn" onClick={() => setCreating(null)}>取消</button>
+        </div>
+      )}
+
+      <div className="blog-layout">
+        <aside className="blog-side">
+          {tree.length === 0
+            ? <p className="dim">还没有文档。点右上角「新建文档」开始。</p>
+            : (
+              <BlogTree
+                nodes={tree} depth={0} expanded={expanded} active={doc?.path ?? null}
+                onToggle={toggle} onOpen={(p) => openDoc(p)}
+                onDelete={(p, isDir) => remove(p, isDir)}
+              />
+            )}
+        </aside>
+
+        <section className="blog-main">
+          {!doc ? (
+            <Centered>
+              <PenLine size={22} />
+              <p>从左侧选一篇文档，或新建一个</p>
+              <p className="dim">收藏页点卡片上的笔图标，会自动在这里生成对应的笔记</p>
+            </Centered>
+          ) : (
+            <>
+              <div className="blog-toolbar">
+                <input className="blog-title" value={title} placeholder="标题"
+                       onChange={(e) => { setTitle(e.target.value); setDirty(true) }} />
+                <input className="blog-tags" value={tags} placeholder="标签，逗号分隔"
+                       onChange={(e) => { setTags(e.target.value); setDirty(true) }} />
+                <span className="kcard-gap" />
+                <button type="button" className={`ghost-btn ${mode === 'edit' ? 'on' : ''}`}
+                        onClick={() => setMode('edit')}><Edit3 size={13} />编辑</button>
+                <button type="button" className={`ghost-btn ${mode === 'preview' ? 'on' : ''}`}
+                        onClick={() => setMode('preview')}><Eye size={13} />预览</button>
+                <button type="button" className="ghost-btn"
+                        onClick={() => { setRenameTo(doc.path); setRenaming(true) }}>
+                  <Pencil size={13} />重命名
+                </button>
+                <button type="button" className="ghost-btn danger" onClick={() => remove(doc.path, false)}>
+                  <Trash2 size={13} />删除
+                </button>
+                <button type="button" className="primary-button" onClick={save} disabled={busy}>
+                  {busy ? <Loader2 className="spin" size={14} /> : <Save size={14} />}
+                  {busy ? '保存中' : '保存'}
+                </button>
+              </div>
+
+              <p className="blog-meta">
+                <code>{doc.path}</code> · 更新于 {doc.updated_at.slice(0, 16).replace('T', ' ')}
+                {dirty && <em>有未保存的修改</em>}
+              </p>
+
+              {renaming && (
+                <div className="blog-create">
+                  <input autoFocus value={renameTo} onChange={(e) => setRenameTo(e.target.value)}
+                         onKeyDown={(e) => { if (e.key === 'Enter') doRename(); if (e.key === 'Escape') setRenaming(false) }} />
+                  <button type="button" className="primary-button small" onClick={doRename}>确认</button>
+                  <button type="button" className="ghost-btn" onClick={() => setRenaming(false)}>取消</button>
+                </div>
+              )}
+
+              {doc.item && (
+                <div className="blog-ref">
+                  <span className="blog-ref-label"><Link2 size={12} /> 关联知识</span>
+                  <span className={`kind-chip ${doc.item.kind}`}>{KIND_META[doc.item.kind]?.label}</span>
+                  <strong>{doc.item.title}</strong>
+                  <span className="kcard-date">{doc.item.date}</span>
+                  {doc.item.url && (
+                    <a href={doc.item.url} target="_blank" rel="noreferrer">原文 <ExternalLink size={12} /></a>
+                  )}
+                </div>
+              )}
+
+              {mode === 'edit' ? (
+                <textarea
+                  className="blog-editor"
+                  value={draft}
+                  spellCheck={false}
+                  onChange={(e) => { setDraft(e.target.value); setDirty(true) }}
+                />
+              ) : (
+                <div className="blog-preview"><Markdown text={draft} /></div>
+              )}
+            </>
+          )}
+        </section>
+      </div>
     </div>
   )
 }

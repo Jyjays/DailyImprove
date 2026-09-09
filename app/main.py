@@ -11,6 +11,7 @@ from app.module_loader import sync_all_modules
 from app.scheduler import scheduler_manager
 from app.utils.logger import logger
 from app.web.api import router as api_router
+from app.web.blog_api import router as blog_router
 from app.web.study_api import router as study_router
 from app.web.ui import router as ui_router
 
@@ -44,3 +45,4 @@ app.add_middleware(
 app.include_router(ui_router)
 app.include_router(api_router)
 app.include_router(study_router)
+app.include_router(blog_router)
