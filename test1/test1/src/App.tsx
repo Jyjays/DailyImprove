@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   BookOpen, CalendarCheck, ChevronDown, ChevronLeft, ChevronRight, Code2, Edit3,
   ExternalLink, Eye, FilePlus, FileText, Folder, FolderOpen, FolderPlus, GraduationCap,
-  Lightbulb, Link2, Loader2, Newspaper, PenLine, Pencil, Rss, Save, Search, Star, Tag,
-  Trash2, CheckCircle2, Circle, AlertCircle, HelpCircle,
+  Lightbulb, Link2, Loader2, Newspaper, PanelLeftClose, PanelLeftOpen, PenLine, Pencil,
+  Rss, Save, Search, Star, Tag, Trash2, CheckCircle2, Circle, AlertCircle, HelpCircle,
 } from 'lucide-react'
 import type {
   BlogDoc, BlogNode, CheckinStatus, CourseItem, KnowledgeItem, KnowledgeKind,
@@ -45,6 +45,8 @@ export default function App() {
   const [view, setView] = useState<View>('today')
   // 从知识卡片跳到博客时，指定要打开的文档路径
   const [blogTarget, setBlogTarget] = useState<string | null>(null)
+  // 全局左侧导航栏是否折叠
+  const [navCollapsed, setNavCollapsed] = useState(false)
 
   /** 打开（必要时先创建）某条知识的笔记，然后切到博客页 */
   const openNote = async (it: KnowledgeItem) => {
@@ -55,14 +57,22 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${navCollapsed ? 'nav-collapsed' : ''}`}>
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-glyph"><BookOpen size={20} /></span>
-          <div>
+          <div className="brand-text">
             <strong>DailyImprove</strong>
             <span>学习台 · STUDY DESK</span>
           </div>
+          <button
+            type="button"
+            className="sidebar-collapse"
+            onClick={() => setNavCollapsed((v) => !v)}
+            title={navCollapsed ? '展开侧栏' : '折叠侧栏'}
+          >
+            {navCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          </button>
         </div>
         <nav className="main-nav">
           <p className="eyebrow">工作区</p>
@@ -580,6 +590,8 @@ function BlogPage({ target, onTargetOpened }: { target: string | null; onTargetO
   const [newPath, setNewPath] = useState('')
   const [renaming, setRenaming] = useState(false)
   const [renameTo, setRenameTo] = useState('')
+  // 博客目录树侧栏是否折叠（折叠后编辑器占满整行）
+  const [sideCollapsed, setSideCollapsed] = useState(false)
 
   const reload = useCallback(async () => {
     try { setTree((await fetchBlogTree()).tree) } catch { setTree([]) }
@@ -737,17 +749,30 @@ function BlogPage({ target, onTargetOpened }: { target: string | null; onTargetO
         </div>
       )}
 
-      <div className="blog-layout">
+      <div className={`blog-layout ${sideCollapsed ? 'side-collapsed' : ''}`}>
         <aside className="blog-side">
-          {tree.length === 0
-            ? <p className="dim">还没有文档。点右上角「新建文档」开始。</p>
-            : (
-              <BlogTree
-                nodes={tree} depth={0} expanded={expanded} active={doc?.path ?? null}
-                onToggle={toggle} onOpen={(p) => openDoc(p)}
-                onDelete={(p, isDir) => remove(p, isDir)}
-              />
-            )}
+          <div className="blog-side-head">
+            <span className="blog-side-title">目录</span>
+            <button
+              type="button"
+              className="blog-side-collapse"
+              onClick={() => setSideCollapsed((v) => !v)}
+              title={sideCollapsed ? '展开目录树' : '折叠目录树'}
+            >
+              {sideCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+            </button>
+          </div>
+          <div className="blog-side-body">
+            {tree.length === 0
+              ? <p className="dim">还没有文档。点右上角「新建文档」开始。</p>
+              : (
+                <BlogTree
+                  nodes={tree} depth={0} expanded={expanded} active={doc?.path ?? null}
+                  onToggle={toggle} onOpen={(p) => openDoc(p)}
+                  onDelete={(p, isDir) => remove(p, isDir)}
+                />
+              )}
+          </div>
         </aside>
 
         <section className="blog-main">

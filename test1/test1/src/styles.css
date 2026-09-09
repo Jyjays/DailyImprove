@@ -43,6 +43,34 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .sidebar-close, .mobile-header { display: none; }
 .sidebar .sidebar-close { display: none; }
 .main { min-height: 100vh; margin-left: 248px; }
+
+/* ---------- 侧栏折叠 ---------- */
+.sidebar-collapse {
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: #8c918d;
+  border-radius: 2px;
+  transition: .18s;
+}
+.sidebar-collapse:hover { color: #fff; background: #242725; }
+
+.app-shell.nav-collapsed .sidebar { width: 68px; padding: 28px 10px 22px; }
+.app-shell.nav-collapsed .main { margin-left: 68px; }
+.app-shell.nav-collapsed .brand { flex-direction: column; align-items: center; justify-content: center; gap: 14px; min-height: 0; }
+.app-shell.nav-collapsed .brand-text { display: none; }
+.app-shell.nav-collapsed .sidebar-collapse { margin-left: 0; }
+.app-shell.nav-collapsed .main-nav { margin-top: 40px; }
+.app-shell.nav-collapsed .main-nav > .eyebrow { display: none; }
+.app-shell.nav-collapsed .main-nav button { justify-content: center; padding: 12px 0; }
+.app-shell.nav-collapsed .main-nav button span { display: none; }
+.app-shell.nav-collapsed .main-nav button .nav-hint { display: none; }
+.app-shell.nav-collapsed .nav-mark { right: -10px; }
+.app-shell.nav-collapsed .sidebar-foot { display: none; }
 .page { max-width: 1260px; margin: 0 auto; padding: 54px 54px 70px; }
 
 .hero { min-height: 390px; position: relative; display: grid; grid-template-columns: 1.25fr .75fr; align-items: center; border-bottom: 1px solid var(--line); overflow: hidden; }
