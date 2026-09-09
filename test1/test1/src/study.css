@@ -694,6 +694,28 @@
 .blog-row:hover .blog-del { opacity: 1; }
 .blog-del:hover { color: #c0442b; }
 
+.blog-virtual-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  background: rgba(23, 126, 137, .14);
+  color: var(--teal);
+  font: 600 9px/1.4 'IBM Plex Mono', monospace;
+  letter-spacing: .04em;
+  font-style: normal;
+}
+.blog-readonly-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin: 0 6px;
+  padding: 5px 9px;
+  background: rgba(23, 126, 137, .12);
+  color: #125960;
+  font: 600 11px/1 'IBM Plex Mono', monospace;
+  letter-spacing: .04em;
+  font-style: normal;
+  border-radius: 2px;
+}
+
 .blog-create { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
 .blog-create input {
   flex: 1 1 auto;

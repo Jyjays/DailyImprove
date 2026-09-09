@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   BookOpen, CalendarCheck, ChevronDown, ChevronLeft, ChevronRight, Code2, Edit3,
   ExternalLink, Eye, FilePlus, FileText, Folder, FolderOpen, FolderPlus, GraduationCap,
-  Lightbulb, Link2, Loader2, Newspaper, PanelLeftClose, PanelLeftOpen, PenLine, Pencil,
-  Rss, Save, Search, Star, Tag, Trash2, CheckCircle2, Circle, AlertCircle, HelpCircle,
+  Lightbulb, Link2, Loader2, Lock, Newspaper, PanelLeftClose, PanelLeftOpen, PenLine,
+  Pencil, Rss, Save, Search, Star, Tag, Trash2, CheckCircle2, Circle, AlertCircle,
+  HelpCircle,
 } from 'lucide-react'
 import type {
   BlogDoc, BlogNode, CheckinStatus, CourseItem, KnowledgeItem, KnowledgeKind,
@@ -526,6 +527,7 @@ function BlogTree({
       {nodes.map((n) => {
         if (n.type === 'dir') {
           const isOpen = expanded.has(n.path)
+          const isVirtual = n.virtual === true
           return (
             <li key={n.path}>
               <div className="blog-row">
@@ -535,11 +537,14 @@ function BlogTree({
                 <button type="button" className="blog-name" onClick={() => onToggle(n.path)}>
                   {isOpen ? <FolderOpen size={14} /> : <Folder size={14} />}
                   {n.name}
+                  {isVirtual && <em className="blog-virtual-tag" title="由日报系统管理，博客侧只读">只读</em>}
                 </button>
-                <button type="button" className="blog-del" title="删除目录（含全部内容）"
-                        onClick={() => onDelete(n.path, true)}>
-                  <Trash2 size={12} />
-                </button>
+                {!isVirtual && (
+                  <button type="button" className="blog-del" title="删除目录（含全部内容）"
+                          onClick={() => onDelete(n.path, true)}>
+                    <Trash2 size={12} />
+                  </button>
+                )}
               </div>
               {isOpen && n.children && (
                 <BlogTree
@@ -550,6 +555,7 @@ function BlogTree({
             </li>
           )
         }
+        const isVirtual = n.virtual === true
         return (
           <li key={n.path}>
             <div className={`blog-row file ${active === n.path ? 'on' : ''}`}>
@@ -557,10 +563,12 @@ function BlogTree({
               <button type="button" className="blog-name" onClick={() => onOpen(n.path)} title={n.title}>
                 <FileText size={14} />{n.title}
               </button>
-              <button type="button" className="blog-del" title="删除文档"
-                      onClick={() => onDelete(n.path, false)}>
-                <Trash2 size={12} />
-              </button>
+              {!isVirtual && (
+                <button type="button" className="blog-del" title="删除文档"
+                        onClick={() => onDelete(n.path, false)}>
+                  <Trash2 size={12} />
+                </button>
+              )}
             </div>
           </li>
         )
@@ -785,26 +793,42 @@ function BlogPage({ target, onTargetOpened }: { target: string | null; onTargetO
           ) : (
             <>
               <div className="blog-toolbar">
-                <input className="blog-title" value={title} placeholder="标题"
-                       onChange={(e) => { setTitle(e.target.value); setDirty(true) }} />
-                <input className="blog-tags" value={tags} placeholder="标签，逗号分隔"
-                       onChange={(e) => { setTags(e.target.value); setDirty(true) }} />
-                <span className="kcard-gap" />
-                <button type="button" className={`ghost-btn ${mode === 'edit' ? 'on' : ''}`}
-                        onClick={() => setMode('edit')}><Edit3 size={13} />编辑</button>
-                <button type="button" className={`ghost-btn ${mode === 'preview' ? 'on' : ''}`}
-                        onClick={() => setMode('preview')}><Eye size={13} />预览</button>
-                <button type="button" className="ghost-btn"
-                        onClick={() => { setRenameTo(doc.path); setRenaming(true) }}>
-                  <Pencil size={13} />重命名
-                </button>
-                <button type="button" className="ghost-btn danger" onClick={() => remove(doc.path, false)}>
-                  <Trash2 size={13} />删除
-                </button>
-                <button type="button" className="primary-button" onClick={save} disabled={busy}>
-                  {busy ? <Loader2 className="spin" size={14} /> : <Save size={14} />}
-                  {busy ? '保存中' : '保存'}
-                </button>
+                {doc.read_only ? (
+                  <>
+                    <input className="blog-title" value={title} placeholder="标题" readOnly />
+                    <em className="blog-readonly-tag" title="由日报系统管理，博客侧只读">
+                      <Lock size={12} /> 只读
+                    </em>
+                    <span className="kcard-gap" />
+                    <button type="button" className={`ghost-btn ${mode === 'edit' ? 'on' : ''}`}
+                            onClick={() => setMode('edit')}><Edit3 size={13} />查看源码</button>
+                    <button type="button" className={`ghost-btn ${mode === 'preview' ? 'on' : ''}`}
+                            onClick={() => setMode('preview')}><Eye size={13} />预览</button>
+                  </>
+                ) : (
+                  <>
+                    <input className="blog-title" value={title} placeholder="标题"
+                           onChange={(e) => { setTitle(e.target.value); setDirty(true) }} />
+                    <input className="blog-tags" value={tags} placeholder="标签，逗号分隔"
+                           onChange={(e) => { setTags(e.target.value); setDirty(true) }} />
+                    <span className="kcard-gap" />
+                    <button type="button" className={`ghost-btn ${mode === 'edit' ? 'on' : ''}`}
+                            onClick={() => setMode('edit')}><Edit3 size={13} />编辑</button>
+                    <button type="button" className={`ghost-btn ${mode === 'preview' ? 'on' : ''}`}
+                            onClick={() => setMode('preview')}><Eye size={13} />预览</button>
+                    <button type="button" className="ghost-btn"
+                            onClick={() => { setRenameTo(doc.path); setRenaming(true) }}>
+                      <Pencil size={13} />重命名
+                    </button>
+                    <button type="button" className="ghost-btn danger" onClick={() => remove(doc.path, false)}>
+                      <Trash2 size={13} />删除
+                    </button>
+                    <button type="button" className="primary-button" onClick={save} disabled={busy}>
+                      {busy ? <Loader2 className="spin" size={14} /> : <Save size={14} />}
+                      {busy ? '保存中' : '保存'}
+                    </button>
+                  </>
+                )}
               </div>
 
               <p className="blog-meta">
@@ -838,6 +862,7 @@ function BlogPage({ target, onTargetOpened }: { target: string | null; onTargetO
                   className="blog-editor"
                   value={draft}
                   spellCheck={false}
+                  readOnly={doc.read_only === true}
                   onChange={(e) => { setDraft(e.target.value); setDirty(true) }}
                 />
               ) : (

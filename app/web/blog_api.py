@@ -42,6 +42,11 @@ BLOG_ROOT = PROJECT_ROOT / "blog"
 NOTE_DIRNAME = "收藏笔记"          # 收藏笔记固定落在这一层，便于识别
 NOTE_DIR = BLOG_ROOT / NOTE_DIRNAME
 
+# 「每日计划」虚拟节点：plan/daily/*.md 由日报系统管理，博客侧只读
+PLAN_DAILY_ROOT = PROJECT_ROOT / "plan" / "daily"
+VIRTUAL_PLAN_PREFIX = "__virtual__:plan_daily__"
+VIRTUAL_PLAN_LABEL = "每日计划"
+
 _FM_RE = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
 _ILLEGAL_CHARS = re.compile(r"[\\/:*?\"<>|\r\n\t]")
 
@@ -50,16 +55,37 @@ _ILLEGAL_CHARS = re.compile(r"[\\/:*?\"<>|\r\n\t]")
 # 工具
 # --------------------------------------------------------------------------
 
+def _is_virtual_plan(path: str) -> bool:
+    return path.startswith(VIRTUAL_PLAN_PREFIX)
+
+
+def _resolve_virtual(rel: str) -> Path:
+    """把虚拟路径解析成 plan/daily 下的绝对路径。"""
+    stripped = rel[len(VIRTUAL_PLAN_PREFIX):].lstrip("/")
+    if not stripped:
+        return PLAN_DAILY_ROOT.resolve()
+    return (PLAN_DAILY_ROOT / stripped).resolve()
+
+
 def _safe_path(rel: str, *, allow_root: bool = False) -> Path:
     """把前端传来的相对路径解析成 BLOG_ROOT 内的绝对路径。
 
     防目录穿越：解析后必须仍在 BLOG_ROOT 内部，否则 400。
+    虚拟节点（plan/daily 下的日报）跳过此检查，由调用方决定是否允许。
     """
     rel = (rel or "").strip().strip("/\\")
     if not rel:
         if allow_root:
             return BLOG_ROOT
         raise HTTPException(status_code=400, detail="路径为空")
+
+    # 虚拟路径：直接解析到 plan/daily，但仍要做路径合法性检查
+    if _is_virtual_plan(rel):
+        target = _resolve_virtual(rel)
+        plan_root = PLAN_DAILY_ROOT.resolve()
+        if target != plan_root and plan_root not in target.parents:
+            raise HTTPException(status_code=400, detail=f"非法虚拟路径：{rel}")
+        return target
 
     target = (BLOG_ROOT / rel).resolve()
     root = BLOG_ROOT.resolve()
@@ -68,6 +94,16 @@ def _safe_path(rel: str, *, allow_root: bool = False) -> Path:
     if target == root and not allow_root:
         raise HTTPException(status_code=400, detail="不能对根目录做此操作")
     return target
+
+
+def _virtual_only_error(rel: str) -> HTTPException | None:
+    """虚拟节点不允许写操作。返回 None 表示不是虚拟路径。"""
+    if _is_virtual_plan(rel):
+        return HTTPException(
+            status_code=403,
+            detail="每日计划由日报系统管理，博客侧只读，不允许编辑/删除/重命名",
+        )
+    return None
 
 
 def _ensure_blog_root() -> None:
@@ -133,10 +169,54 @@ def _file_node(path: Path) -> dict[str, Any]:
         "path": _rel(path),
         "tags": _norm_tags(meta.get("tags")),
         "item_id": meta.get("item_id"),
+        "source": "blog",
         "updated_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
         "size": stat.st_size,
         "excerpt": re.sub(r"\s+", " ", body)[:110],
     }
+
+
+def _infer_title_from_body(body: str, fallback: str) -> str:
+    """从正文首行 `# xxx` 提取标题，日报没有 front matter 时用。"""
+    for line in body.splitlines():
+        m = re.match(r"#\s+(.+)", line.strip())
+        if m:
+            return m.group(1).strip()
+    return fallback
+
+
+def _plan_daily_file_node(path: Path) -> dict[str, Any]:
+    raw = path.read_text(encoding="utf-8", errors="replace")
+    meta, body = _split_front_matter(raw)
+    stat = path.stat()
+    title = (meta.get("title") if isinstance(meta, dict) else None) or _infer_title_from_body(body, path.stem)
+    return {
+        "type": "file",
+        "name": path.name,
+        "title": str(title),
+        "path": f"{VIRTUAL_PLAN_PREFIX}/{path.name}",
+        "tags": _norm_tags(meta.get("tags")) if isinstance(meta, dict) else [],
+        "item_id": None,
+        "source": "plan_daily",
+        "virtual": True,
+        "updated_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+        "size": stat.st_size,
+        "excerpt": re.sub(r"\s+", " ", body)[:110] if body else "",
+    }
+
+
+def _build_plan_daily_tree() -> list[dict[str, Any]]:
+    """plan/daily/*.md 作为「每日计划」虚拟目录的子节点。"""
+    if not PLAN_DAILY_ROOT.exists():
+        return []
+    out: list[dict[str, Any]] = []
+    for p in sorted(PLAN_DAILY_ROOT.glob("*.md"), key=lambda x: x.name.lower()):
+        try:
+            out.append(_plan_daily_file_node(p))
+        except OSError:
+            continue
+    out.sort(key=lambda n: n["name"], reverse=True)   # 日期倒序
+    return out
 
 
 def _build_tree(dir_path: Path) -> list[dict[str, Any]]:
@@ -188,10 +268,25 @@ def _linked_item(item_id: Any, session: Session) -> dict[str, Any] | None:
 @router.get("/tree")
 def get_tree():
     _ensure_blog_root()
+    tree = _build_tree(BLOG_ROOT)
+
+    # 注入「每日计划」虚拟目录（plan/daily/*.md，只读）
+    plan_files = _build_plan_daily_tree()
+    if plan_files:
+        tree.insert(0, {
+            "type": "dir",
+            "name": VIRTUAL_PLAN_LABEL,
+            "path": VIRTUAL_PLAN_PREFIX,
+            "source": "plan_daily",
+            "virtual": True,
+            "children": plan_files,
+        })
+
     return {
         "root": BLOG_ROOT.name,
         "note_dir": NOTE_DIRNAME,
-        "tree": _build_tree(BLOG_ROOT),
+        "plan_label": VIRTUAL_PLAN_LABEL,
+        "tree": tree,
     }
 
 
@@ -201,6 +296,7 @@ def get_tree():
 
 @router.get("/doc")
 def get_doc(path: str, session: Session = Depends(get_session)):
+    virtual = _is_virtual_plan(path)
     p = _safe_path(path)
     if p.is_dir():
         raise HTTPException(status_code=400, detail="这是一个目录")
@@ -209,15 +305,28 @@ def get_doc(path: str, session: Session = Depends(get_session)):
 
     meta, body, raw = _read_doc(p)
     stat = p.stat()
+    # 虚拟日报没 front matter 时，从正文首行 `# xxx` 推断标题
+    raw_title = meta.get("title")
+    if virtual or not raw_title:
+        inferred = _infer_title_from_body(body, p.stem)
+        if virtual:
+            title = inferred
+        else:
+            title = str(raw_title or inferred)
+    else:
+        title = str(raw_title)
+
     return {
-        "path": _rel(p),
-        "title": str(meta.get("title") or p.stem),
+        "path": path if virtual else _rel(p),
+        "title": title,
         "tags": _norm_tags(meta.get("tags")),
-        "item_id": meta.get("item_id"),
+        "item_id": meta.get("item_id") if not virtual else None,
         "content": body,                 # 正文（不含 front matter）
         "raw": raw,                      # 含 front matter 的完整原文
         "updated_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
-        "item": _linked_item(meta.get("item_id"), session),
+        "item": None if virtual else _linked_item(meta.get("item_id"), session),
+        "source": "plan_daily" if virtual else "blog",
+        "read_only": virtual,
     }
 
 
@@ -231,6 +340,8 @@ class DocPayload(BaseModel):
 
 @router.put("/doc")
 def put_doc(payload: DocPayload):
+    if (e := _virtual_only_error(payload.path)) is not None:
+        raise e
     p = _safe_path(payload.path)
     if p.suffix.lower() != ".md":
         raise HTTPException(status_code=400, detail="只支持 .md 文档")
@@ -278,6 +389,10 @@ def create_folder(payload: PathPayload):
 
 @router.post("/rename")
 def rename_node(payload: RenamePayload):
+    if (e := _virtual_only_error(payload.path)) is not None:
+        raise e
+    if (e := _virtual_only_error(payload.new_path)) is not None:
+        raise e
     src = _safe_path(payload.path)
     dst = _safe_path(payload.new_path)
     if not src.exists():
@@ -294,6 +409,8 @@ def rename_node(payload: RenamePayload):
 
 @router.delete("/node")
 def delete_node(path: str):
+    if (e := _virtual_only_error(path)) is not None:
+        raise e
     p = _safe_path(path)
     if not p.exists():
         raise HTTPException(status_code=404, detail="路径不存在")

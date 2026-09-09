@@ -179,6 +179,10 @@ export interface BlogNode {
   title?: string
   tags?: string[]
   item_id?: number | null
+  /** 'blog' = 本地 md；'plan_daily' = 日报虚拟节点 */
+  source?: 'blog' | 'plan_daily'
+  /** 仅虚拟节点（每日计划）有 true；用于禁用删除/编辑按钮 */
+  virtual?: boolean
   updated_at?: string
   size?: number
   excerpt?: string
@@ -194,6 +198,10 @@ export interface BlogDoc {
   raw: string              // 含 front matter
   updated_at: string
   item: KnowledgeItem | null
+  /** 虚拟节点（每日计划）= 'plan_daily'；普通 md = 'blog' */
+  source?: 'blog' | 'plan_daily'
+  /** 虚拟节点不允许编辑 */
+  read_only?: boolean
 }
 
 export interface BlogNote {
