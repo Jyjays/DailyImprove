@@ -16,14 +16,10 @@ llm:
   max_tokens: 8000
   threshold: 62
   profile: |
-    用户是研究生，研究方向是 LLM Agent 的 Memory 系统，正在找可以做的 idea。
-    已在跟进的工作：MemoryBank、Mem0、MemGPT/Letta、ReadAgent、A-Mem、Zep/Graphiti、MemOS、GraphRAG 等。
-    关注点：记忆的表示（向量/图/结构化/参数）、写入与巩固、更新与冲突消解、检索、遗忘机制、
-    多智能体记忆共享、评测基准（LoCoMo/LongMemEval/MemBench 等），
-    以及记忆系统的存储开销、索引规模、增量更新代价（这是用户的差异化方向）。
-    优先：提出了新机制、新评测、或明确指出现有方法缺陷的工作。
-    不要：纯应用报告、把 memory 当 buzzword 的水文、与 Agent Memory 无关的大模型论文。
-    摘要里请点明：这篇和现有工作（如 Mem0/A-Mem/Zep）的区别是什么。
+    主题范围：LLM Agent Memory，重点是存储开销、索引规模、增量更新、压缩、检索和维护代价。
+    优先可复核的系统机制、公开代码、测量边界与局限；摘要说明与已有方法的关系。
+    学术以毕业需要为底线，不预设用户每天读论文、找 idea 或追求发表。
+    当前阶段与偏好在运行时从共享上下文读取；论文是按需资料，不转成学习作业。
 filter:
   keywords_include: ["memory", "agent", "retrieval", "remember", "long-term"]
   keywords_exclude: ["memorization", "memory-efficient", "memory footprint"]

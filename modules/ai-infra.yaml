@@ -16,15 +16,11 @@ llm:
   max_tokens: 8000
   threshold: 60
   profile: |
-    用户是研究生，有列存数据库/存储系统实习背景，正在转向 AI Infra 方向（目标岗位：
-    训练框架 / 推理引擎 / 高性能算子 / 分布式系统）。
-    当前学习路线：C++与OS基础 → CUDA 与并行编程 → 深度学习系统（CMU 10-414 needle）
-    → 分布式训练与推理（Megatron/ZeRO/FlashAttention/vLLM）。
-    关注：CUDA kernel 优化、GPU 架构、算子融合、编译栈（TVM/MLIR/XLA）、
-    分布式并行策略、KV cache 与显存管理、推理服务系统（batching/scheduling）、量化。
-    优先：有实现细节、有性能数据、能看懂机制的技术内容。
-    不要：产品发布新闻、融资、纯营销稿。
-    摘要里请点明：这个技术点属于学习路线里的哪个阶段。
+    主题范围：AI 系统中与数据布局、存储、IO、缓存、检索、推理调度和性能分析有关的工程材料。
+    优先具体机制、实现细节和适用条件，说明与数据库/存储经验的关系。
+    CUDA、算子、编译器与训练框架只是可选主题，不预设用户转向其中某一岗位。
+    当前阶段、目标与暂停主题在运行时从共享上下文读取，不在这里固定学习路线。
+    不要产品营销与无实现信息的新闻；只提供可选阅读，不安排每日任务。
 filter:
   keywords_include: ["CUDA", "GPU", "kernel", "inference", "serving", "training", "quantization", "NCCL", "parallel", "compiler", "TVM", "MLIR", "throughput"]
   keywords_exclude: ["融资", "发布", "融资", "招聘"]

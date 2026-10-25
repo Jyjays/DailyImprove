@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import os
 
 import httpx
 
@@ -20,14 +21,11 @@ class SearchSourcePlugin(SourcePlugin):
     name = "search"
 
     def fetch(self, source: SourceContext) -> list[RawItem]:
-        from app.config import settings
-
         cfg = source.config or {}
         query = cfg.get("query") or source.url
         if not query:
             raise ValueError("search 来源需要 config.query 或 url 作为搜索词")
-        api_key = cfg.get("api_key") or settings.llm_api_key  # 不强制；Tavily 需要 TAVILY_API_KEY
-        tavily_key = __import__("os").environ.get("TAVILY_API_KEY", api_key)
+        tavily_key = cfg.get("api_key") or os.environ.get("TAVILY_API_KEY")
         if not tavily_key:
             raise ValueError("search 来源需要 TAVILY_API_KEY")
 

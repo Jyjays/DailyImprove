@@ -89,7 +89,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   })
   if (!res.ok) {
-    throw new Error(`接口错误 ${res.status}: ${path}`)
+    const body = await res.json().catch(() => null)
+    throw new Error(typeof body?.detail === 'string' ? body.detail : `接口错误 ${res.status}: ${path}`)
   }
   return res.json() as Promise<T>
 }
@@ -134,6 +135,122 @@ export function fetchToday(date?: string) {
   const qs = date ? `?target_date=${date}` : ''
   return request<TodayPlan>(`/today${qs}`)
 }
+
+export interface LearningProfile {
+  phase: string
+  focus: string
+  next_step: string
+  goal: string
+  preferences: string
+  paused_topics: string[]
+  document_path: string
+  mode: 'active' | 'paused'
+}
+
+export interface LearningEntry {
+  id: number
+  client_id: string
+  date: string
+  kind: 'progress' | 'question' | 'guidance'
+  author: 'user' | 'assistant'
+  content: string
+  status: 'recorded' | 'proposed' | 'accepted' | 'dismissed'
+  created_at: string
+}
+
+export interface SharedContext {
+  today: string
+  revision: number
+  profile: LearningProfile
+  entries: LearningEntry[]
+  updated_at: string
+  export_pending: boolean
+  export_error: string | null
+  snapshot_path: string
+}
+
+export const fetchContext = () => request<SharedContext>('/context')
+export const updateContext = (revision: number, profile: LearningProfile) =>
+  request<SharedContext>('/context', { method: 'PUT', body: JSON.stringify({ revision, profile }) })
+export const addLearningEntry = (entry: Pick<LearningEntry, 'client_id' | 'content' | 'kind' | 'author'>) =>
+  request<SharedContext>('/context/entries', { method: 'POST', body: JSON.stringify(entry) })
+export const decideGuidance = (id: number, status: 'accepted' | 'dismissed') =>
+  request<SharedContext>(`/context/entries/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) })
+export const exportContext = () => request<{ markdown: string }>('/context/export')
+export const retryContextExport = () => request<SharedContext>('/context/export', { method: 'POST' })
+
+export type PracticeKind = 'open' | 'algorithm' | 'project' | 'scenario'
+export type AttemptResult = 'independent' | 'hinted' | 'understood' | 'again'
+export type AttemptMode = 'oral' | 'written' | 'code' | 'read'
+export interface PracticeSource {
+  id: number
+  source_type: 'interview' | 'algorithm' | 'documentation' | 'personal' | 'generated' | 'project'
+  title: string
+  url: string
+  published_on: string | null
+  captured_at: string
+  verification: 'checked' | 'user_confirmed' | 'unverified'
+  company: string; position: string; hiring_type: string
+  excerpt: string
+  note: string
+}
+export interface QualitativeFeedback { covered: string[]; missing: string[]; followups: string[]; caveat: string }
+export interface PracticeAttempt {
+  id: number; question_id: string; mode: AttemptMode; result: AttemptResult
+  answer: string; note: string; submission_url: string; created_at: string
+  feedback: QualitativeFeedback | null
+}
+export interface PracticeQuestion {
+  id: string; title: string; kind: PracticeKind; origin: string; prompt: string
+  topics: string[]; roles: string[]; document_path: string; sources: PracticeSource[]
+  last_result: AttemptResult | null
+  review: { due_on: string; status: 'scheduled' | 'paused'; step: number } | null
+}
+export interface PracticeDetail extends PracticeQuestion {
+  reference_notes: string; followups: string[]; attempts: PracticeAttempt[]
+}
+export interface PracticeTopic {
+  key: string; name: string; description: string; material_title: string; material_url: string; example: string
+  status: 'candidate' | 'focusing' | 'comfortable' | 'paused'; note: string; question_count: number
+}
+export interface PracticeSummary {
+  attempts_last_7_days: number
+  recent_attempts: Array<{ id: number; question_id: string; title: string; date: string; mode: AttemptMode; result: AttemptResult; note: string; topics: string[] }>
+  topic_choices: Array<Pick<PracticeTopic, 'key' | 'name' | 'status' | 'note'>>
+  note: string
+}
+export interface SourcePayload {
+  source_type: Exclude<PracticeSource['source_type'], 'project'>
+  title: string; url: string; published_on: string | null
+  verification: 'unverified' | 'user_confirmed'; excerpt: string; note: string
+  company: string; position: string; hiring_type: string
+}
+export interface QuestionPayload {
+  title: string; kind: Exclude<PracticeKind, 'project'>; prompt: string; reference_notes: string
+  topics: string[]; roles: string[]; followups: string[]; source: SourcePayload
+}
+export const fetchPracticeTopics = () => request<{ items: PracticeTopic[] }>('/practice/topics')
+export const updatePracticeTopic = (key: string, status: PracticeTopic['status'], note: string) =>
+  request<{ ok: boolean }>(`/practice/topics/${key}`, { method: 'PATCH', body: JSON.stringify({ status, note }) })
+export function fetchPracticeQuestions(params: { topic?: string; kind?: string; q?: string; page?: number } = {}) {
+  const qs = new URLSearchParams()
+  Object.entries(params).forEach(([k, v]) => { if (v) qs.set(k, String(v)) })
+  return request<{ total: number; page: number; page_size: number; items: PracticeQuestion[] }>(`/practice/questions?${qs}`)
+}
+export const fetchPracticeDetail = (id: string) => request<PracticeDetail>(`/practice/questions/${id}`)
+export const createPracticeQuestion = (payload: QuestionPayload) => request<{ created: boolean; question: PracticeDetail }>('/practice/questions', { method: 'POST', body: JSON.stringify(payload) })
+export const addPracticeSource = (id: string, source: SourcePayload) => request<PracticeDetail>(`/practice/questions/${id}/sources`, { method: 'POST', body: JSON.stringify(source) })
+export const confirmPracticeSource = (id: number) => request<PracticeSource>(`/practice/sources/${id}`, { method: 'PATCH', body: JSON.stringify({ verification: 'user_confirmed' }) })
+export const editPracticeReference = (id: string, reference_notes: string) => request<PracticeDetail>(`/practice/questions/${id}`, { method: 'PATCH', body: JSON.stringify({ reference_notes }) })
+export const previewPracticeSource = (url: string) => request<{ readable: boolean; title: string; excerpt: string; message: string }>('/practice/sources/preview', { method: 'POST', body: JSON.stringify({ url }) })
+export const savePracticeAttempt = (id: string, payload: { client_id: string; mode: AttemptMode; result: AttemptResult; answer: string; note: string; submission_url: string }) =>
+  request<{ attempt: PracticeAttempt; question: PracticeDetail }>(`/practice/questions/${id}/attempts`, { method: 'POST', body: JSON.stringify(payload) })
+export const fetchPracticeReviews = () => request<{ items: PracticeQuestion[]; note: string; today: string }>('/practice/reviews')
+export const updatePracticeReview = (id: string, action: 'postpone' | 'pause' | 'resume', days = 3) =>
+  request<{ due_on: string; status: string }>(`/practice/reviews/${id}`, { method: 'PATCH', body: JSON.stringify({ action, days }) })
+export const fetchPracticeSummary = () => request<PracticeSummary>('/practice/summary')
+export const createProjectQuestions = (document_path: string, topics: string[]) => request<{ items: PracticeQuestion[] }>('/practice/project-questions', { method: 'POST', body: JSON.stringify({ document_path, topics }) })
+export const fetchAttemptFeedback = (id: number) => request<{ available: boolean; feedback?: QualitativeFeedback; message?: string }>(`/practice/attempts/${id}/feedback`, { method: 'POST' })
 
 /** 读打卡 */
 export function fetchCheckin(date?: string) {

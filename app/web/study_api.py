@@ -2,12 +2,13 @@
 
 提供四组能力：
   1. /api/study/knowledge  知识条目（论文/博客），解析 items.llm_output 取出 LLM 生成的摘要、要点、标签
-  2. /api/study/today      今日计划（解析 plan/daily/ 最新日报）
-  3. /api/study/checkin    打卡读写（落 checkins 表 + 回写日报 md，双写保证单一事实来源）
+  2. /api/study/today      按明确日期读取历史/当日日报，不结转旧任务
+  3. /api/study/checkin    兼容旧打卡（数据库保存，Markdown 尝试回写并报告同步状态）
   4. /api/study/courses    课程资料
 
 设计原则（见 AGENTS.md）：
-  - 数据库是持久状态；md 是给人看的事实来源。打卡时两者同步更新。
+  - 新首页使用 /api/study/context，不依赖日报或打卡。
+  - 数据库是学习状态来源；Markdown 是给人看的导出，可能暂时待同步。
   - 禁止编造：LLM 没生成的内容就返回空，前端显示"暂无摘要"。
 """
 from __future__ import annotations
@@ -17,6 +18,8 @@ import re
 from datetime import datetime, date, timedelta
 from pathlib import Path
 from typing import Any
+from typing import Literal
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -183,9 +186,31 @@ def _latest_daily_md() -> Path | None:
     return max(candidates, key=lambda p: p.name)
 
 
+def _daily_md(day: str) -> Path | None:
+    """只匹配日报本身，不把 -sources 文件当成可写日报。"""
+    exact = DAILY_DIR / f"{day}.md"
+    if exact.exists():
+        return exact
+    alternatives = sorted(p for p in DAILY_DIR.glob(f"{day}-*.md")
+                          if re.fullmatch(rf"{re.escape(day)}-\d+\.md", p.name))
+    return alternatives[-1] if alternatives else None
+
+
+def _valid_day(value: str | None) -> str:
+    if value is None:
+        return datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(422, "日期格式必须为 YYYY-MM-DD")
+    if parsed.isoformat() != value:
+        raise HTTPException(422, "日期格式必须为 YYYY-MM-DD")
+    return value
+
+
 def _parse_section(content: str, heading: str) -> str:
     """提取 md 中某个 ## 标题下的正文（到下一个 ## 为止）。"""
-    pattern = rf"^##\s+{re.escape(heading)}\s*$(.*?)(?=^##\s|\Z)"
+    pattern = rf"^##[ \t]+{re.escape(heading)}(?:[ \t]*[（(·：:—-][^\n]*)?[ \t]*\r?\n(.*?)(?=^##[ \t]|\Z)"
     m = re.search(pattern, content, re.M | re.S)
     return m.group(1).strip() if m else ""
 
@@ -423,22 +448,19 @@ def get_knowledge(item_id: int, session: Session = Depends(get_session)):
 
 @router.get("/today")
 def get_today(target_date: str | None = None):
-    """今日计划：从 plan/daily/ 最新日报解析出三件事与打卡清单。
+    """兼容日报阅读：按日期解析内容，不将历史任务当作今日计划。
 
-    target_date 可指定某天（YYYY-MM-DD），默认取最新一份日报。
+    target_date 可指定某天（YYYY-MM-DD），默认取北京时间今天。
     """
-    if target_date:
-        md_path = DAILY_DIR / f"{target_date}.md"
-        if not md_path.exists():
-            # 兼容 -2.md 这类重名文件
-            alt = sorted(DAILY_DIR.glob(f"{target_date}*.md"))
-            md_path = alt[0] if alt else None
-    else:
-        md_path = _latest_daily_md()
+    day = _valid_day(target_date)
+    md_path = _daily_md(day)
 
     if not md_path or not md_path.exists():
-        return {"date": target_date or date.today().isoformat(), "exists": False,
-                "plan": [], "checklist": [], "summary": "", "source_file": None}
+        latest = _latest_daily_md()
+        return {"date": day, "exists": False, "plan": [], "checklist": [],
+                "summary": "", "commit": "", "tomorrow": "", "plan_raw": "",
+                "plan_table": {"headers": [], "rows": []}, "source_file": None,
+                "latest_date": latest.name[:10] if latest else None}
 
     content = md_path.read_text(encoding="utf-8")
     date_str = re.match(r"(\d{4}-\d{2}-\d{2})", md_path.name)
@@ -467,7 +489,7 @@ def get_today(target_date: str | None = None):
 class CheckInItem(BaseModel):
     category: str = Field(..., description="ai-infra/paper/interview/drone/blocker")
     title: str | None = None
-    status: str = Field("todo", description="done/todo/partial/blocked")
+    status: Literal["done", "todo", "partial", "blocked"] = "todo"
     note: str | None = None
 
 
@@ -479,7 +501,7 @@ class CheckInPayload(BaseModel):
 @router.get("/checkin")
 def get_checkin(date_str: str | None = None, session: Session = Depends(get_session)):
     """读某天打卡记录。没传日期就取今天。"""
-    d = date_str or date.today().isoformat()
+    d = _valid_day(date_str)
     rows = session.query(CheckIn).filter(CheckIn.date == d).all()
     return {
         "date": d,
@@ -498,11 +520,11 @@ def get_checkin(date_str: str | None = None, session: Session = Depends(get_sess
 
 @router.post("/checkin")
 def save_checkin(payload: CheckInPayload, session: Session = Depends(get_session)):
-    """保存打卡：写 checkins 表 + 回写 plan/daily/<date>.md。
+    """兼容旧打卡：先保存数据库，再尝试回写 plan/daily/<date>.md。
 
-    双写保证：数据库供程序查询与统计，md 保持给人看的事实来源。
+    回写失败不丢失数据库记录，返回 sync_status=pending。
     """
-    d = payload.date
+    d = _valid_day(payload.date)
     saved = []
     updates: dict[str, dict[str, str]] = {}
 
@@ -542,14 +564,12 @@ def save_checkin(payload: CheckInPayload, session: Session = Depends(get_session
 
     # 回写 md
     md_written = False
-    md_path = DAILY_DIR / f"{d}.md"
-    if not md_path.exists():
-        alt = sorted(DAILY_DIR.glob(f"{d}*.md"))
-        md_path = alt[0] if alt else None
+    md_path = _daily_md(d)
     if md_path and md_path.exists():
         md_written = _rewrite_md_checklist(md_path, updates)
 
     return {"ok": True, "date": d, "saved": saved, "md_written": md_written,
+            "sync_status": "synced" if md_written else "pending",
             "md_file": md_path.name if md_path and md_path.exists() else None}
 
 

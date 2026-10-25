@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
-    Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, Index,
+    Column, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, Index,
 )
 from sqlalchemy.orm import relationship
 
@@ -128,7 +128,8 @@ class CheckIn(Base):
       todo    [ ] 未做
       partial [!] 部分完成且跨天延续
       blocked [?] 卡住，需写清卡点
-    打卡会同时回写 plan/daily/YYYY-MM-DD.md，保证 md 仍是单一事实来源。
+    历史接口尝试回写 plan/daily/YYYY-MM-DD.md；数据库为状态来源。
+    新首页使用 LearningContext / LearningEntry，不再要求每日打卡。
     """
     __tablename__ = "checkins"
     __table_args__ = (UniqueConstraint("date", "category", name="uq_checkin_date_category"),)
@@ -157,6 +158,103 @@ class Favorite(Base):
     item_id = Column(Integer, ForeignKey("items.id", ondelete="CASCADE"), nullable=False, index=True)
     note = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
+
+
+class LearningContext(Base):
+    """当前共享上下文。Markdown 是可重建快照，数据库是状态来源。"""
+
+    __tablename__ = "learning_context"
+
+    id = Column(Integer, primary_key=True)
+    profile_json = Column(Text, nullable=False)
+    revision = Column(Integer, nullable=False, default=1)
+    export_pending = Column(Integer, nullable=False, default=1)
+    export_error = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=datetime.now, nullable=False)
+
+
+class LearningEntry(Base):
+    """自愿记录的进展、问题和待采纳建议；一天可有多条。"""
+
+    __tablename__ = "learning_entries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(String(64), nullable=False, unique=True)
+    date = Column(String(10), nullable=False, index=True)
+    kind = Column(String(16), nullable=False)
+    author = Column(String(16), nullable=False)
+    content = Column(Text, nullable=False)
+    status = Column(String(16), nullable=False, default="recorded")
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+
+
+class PracticeTopic(Base):
+    __tablename__ = "practice_topics"
+    key = Column(String(64), primary_key=True)
+    name = Column(String(120), nullable=False)
+    description = Column(Text, nullable=False)
+    material_title = Column(String(250), nullable=False)
+    material_url = Column(Text, nullable=False)
+    example = Column(Text, nullable=False)
+    status = Column(String(16), nullable=False, default="candidate")
+    note = Column(Text, nullable=False, default="")
+
+
+class PracticeQuestion(Base):
+    __tablename__ = "practice_questions"
+    id = Column(String(64), primary_key=True)
+    canonical_key = Column(String(128), nullable=False, unique=True)
+    title = Column(String(300), nullable=False)
+    kind = Column(String(16), nullable=False)
+    origin = Column(String(16), nullable=False)
+    prompt = Column(Text, nullable=False)
+    reference_notes = Column(Text, nullable=False, default="")
+    followups_json = Column(Text, nullable=False, default="[]")
+    topics_json = Column(Text, nullable=False, default="[]")
+    roles_json = Column(Text, nullable=False, default="[]")
+    document_path = Column(String(500), nullable=False, default="")
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+
+
+class PracticeSource(Base):
+    __tablename__ = "practice_sources"
+    __table_args__ = (UniqueConstraint("question_id", "normalized_url", "source_type", name="uq_practice_source"),)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    question_id = Column(String(64), ForeignKey("practice_questions.id"), nullable=False, index=True)
+    source_type = Column(String(24), nullable=False)
+    title = Column(String(300), nullable=False)
+    url = Column(Text, nullable=False, default="")
+    normalized_url = Column(Text, nullable=False, default="")
+    published_on = Column(Date, nullable=True)
+    captured_at = Column(DateTime, default=datetime.now, nullable=False)
+    verification = Column(String(24), nullable=False, default="unverified")
+    company = Column(String(120), nullable=False, default="")
+    position = Column(String(250), nullable=False, default="")
+    hiring_type = Column(String(32), nullable=False, default="")
+    excerpt = Column(String(400), nullable=False, default="")
+    note = Column(Text, nullable=False, default="")
+
+
+class PracticeAttempt(Base):
+    __tablename__ = "practice_attempts"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(String(64), nullable=False, unique=True)
+    question_id = Column(String(64), ForeignKey("practice_questions.id"), nullable=False, index=True)
+    mode = Column(String(16), nullable=False)
+    result = Column(String(16), nullable=False)
+    answer = Column(Text, nullable=False, default="")
+    note = Column(Text, nullable=False, default="")
+    submission_url = Column(Text, nullable=False, default="")
+    feedback_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+
+
+class PracticeReview(Base):
+    __tablename__ = "practice_reviews"
+    question_id = Column(String(64), ForeignKey("practice_questions.id"), primary_key=True)
+    due_on = Column(Date, nullable=False, index=True)
+    step = Column(Integer, nullable=False, default=0)
+    status = Column(String(16), nullable=False, default="scheduled")
 
 
 class Course(Base):

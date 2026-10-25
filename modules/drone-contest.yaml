@@ -16,13 +16,10 @@ llm:
   max_tokens: 8000
   threshold: 55
   profile: |
-    用户是研究生，被导师安排了一个无人机算法竞赛的横向课题，投入有限（每周约 5 小时），
-    目标是"最小可交差"：跑通 baseline + 一个改进点 + 报告，不追求名次。
-    关注：无人机/四旋翼的目标检测与跟踪、状态估计与 SLAM、路径与轨迹规划、
-    避障、MPC/强化学习控制、仿真环境（Gazebo/PX4 SITL/AirSim）、现成可复用的开源方案。
-    优先：带开源代码、能直接跑、有 benchmark 对比的工作。
-    不要：纯理论推导、需要特殊硬件才能复现的工作。
-    摘要里请点明：有没有开源代码、能不能在仿真里跑。
+    主题范围：无人机与自主导航的可复用开源工程、仿真方案和最小复现材料。
+    不预设用户当前仍在开展横向，不固定每周投入；如无当前需求，仅作为可选资料。
+    当前目标和偏好在运行时从共享上下文读取，不能自动恢复历史任务。
+    摘要注明是否开源、仿真环境与硬件条件，不安排每日任务。
 filter:
   keywords_include: ["drone", "UAV", "quadrotor", "aerial", "autonomous navigation", "path planning", "SLAM", "object tracking"]
   keywords_exclude: []

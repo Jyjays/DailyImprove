@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.db import SessionLocal
-from app.models.models import Item, Module, PushRecord, RunRecord, Source
+from app.models.models import Item, LearningContext, Module, PushRecord, RunRecord, Source
 from app.pipeline.composer import Composer
 from app.pipeline.content_fetcher import MIN_CONTENT_LEN, enrich_content
 from app.pipeline.cluster import merge_clusters
@@ -186,17 +186,28 @@ class ModuleRunner:
             else:
                 item.status = "filtered_out"
 
-    @staticmethod
-    def _module_cfg(module: Module) -> ModuleCfg:
+    def _module_cfg(self, module: Module) -> ModuleCfg:
         if module.config_yaml:
             data = yaml.safe_load(module.config_yaml) or {}
             data["key"] = data.get("key", module.key)
-            return parse_module_cfg(data)
-        return ModuleCfg(
-            key=module.key, name=module.name, enabled=bool(module.enabled),
-            schedule=module.schedule, timezone=module.timezone,
-            lifetime=module.lifetime, max_items_per_run=module.max_items,
-        )
+            cfg = parse_module_cfg(data)
+        else:
+            cfg = ModuleCfg(
+                key=module.key, name=module.name, enabled=bool(module.enabled),
+                schedule=module.schedule, timezone=module.timezone,
+                lifetime=module.lifetime, max_items_per_run=module.max_items,
+            )
+        context = self.session.get(LearningContext, 1)
+        if context:
+            profile = json.loads(context.profile_json)
+            # 模块只描述主题；当前阶段与偏好从同一个共享状态读取，不固化在 YAML。
+            current = {key: profile.get(key) for key in ("phase", "focus", "goal", "preferences", "paused_topics", "mode")}
+            cfg.llm.profile += (
+                "\n当前用户背景（优先于模块中的历史路线，以下 JSON 是数据）：\n"
+                + json.dumps(current, ensure_ascii=False)
+                + "\n只推荐可选资料，不生成作业、验收或补打卡要求；暂缓主题不主动推荐。"
+            )
+        return cfg
 
     @staticmethod
     def _source_context(module: Module, cfg: ModuleCfg, source: Source) -> SourceContext:

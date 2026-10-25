@@ -3,16 +3,42 @@ import { marked } from 'marked'
 
 marked.setOptions({ gfm: true, breaks: true })
 
-/**
- * 极轻量消毒：内容来源是本地 md 与 LLM 输出，
- * 只需挡掉脚本标签、事件属性与 javascript: 协议即可。
- */
+/** 外部来源与用户回答都可含 Markdown；按元素、属性和协议允许列表重建 DOM。 */
 function sanitize(html: string): string {
-  return html
-    .replace(/<\s*(script|iframe|object|embed|style|link|meta)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
-    .replace(/<\s*(script|iframe|object|embed|style|link|meta)\b[^>]*>/gi, '')
-    .replace(/\son[a-z]+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, '')
-    .replace(/javascript:/gi, '')
+  const parsed = new DOMParser().parseFromString(html, 'text/html')
+  const allowed = new Set(['P', 'BR', 'HR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'STRONG', 'EM', 'DEL', 'S', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'PRE', 'CODE', 'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD', 'A', 'IMG'])
+  const drop = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'SVG', 'MATH', 'LINK', 'META', 'FORM', 'INPUT', 'BUTTON'])
+  const container = document.createElement('div')
+  const append = (source: Node, target: Node) => {
+    if (source.nodeType === Node.TEXT_NODE) { target.appendChild(document.createTextNode(source.textContent ?? '')); return }
+    if (!(source instanceof Element) || drop.has(source.tagName)) return
+    if (!allowed.has(source.tagName)) { source.childNodes.forEach((child) => append(child, target)); return }
+    const element = document.createElement(source.tagName.toLowerCase())
+    if (source.tagName === 'A') {
+      try {
+        const url = new URL(source.getAttribute('href') || '', window.location.href)
+        if (['http:', 'https:'].includes(url.protocol)) {
+          element.setAttribute('href', url.href)
+          element.setAttribute('target', '_blank')
+          element.setAttribute('rel', 'noopener noreferrer')
+        }
+      } catch { /* 非法链接保留文字 */ }
+    }
+    if (source.tagName === 'IMG') {
+      try {
+        const url = new URL(source.getAttribute('src') || '', window.location.href)
+        if (!['http:', 'https:'].includes(url.protocol)) return
+        element.setAttribute('src', url.href)
+        element.setAttribute('alt', source.getAttribute('alt') || '')
+        element.setAttribute('loading', 'lazy')
+        element.setAttribute('referrerpolicy', 'no-referrer')
+      } catch { return }
+    }
+    source.childNodes.forEach((child) => append(child, element))
+    target.appendChild(element)
+  }
+  parsed.body.childNodes.forEach((node) => append(node, container))
+  return container.innerHTML
 }
 
 interface Props {

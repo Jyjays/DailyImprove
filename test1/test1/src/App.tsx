@@ -3,28 +3,28 @@ import {
   BookOpen, CalendarCheck, ChevronDown, ChevronLeft, ChevronRight, Code2, Edit3,
   ExternalLink, Eye, FilePlus, FileText, Folder, FolderOpen, FolderPlus, GraduationCap,
   Lightbulb, Link2, Loader2, Lock, Newspaper, PanelLeftClose, PanelLeftOpen, PenLine,
-  Pencil, Rss, Save, Search, Star, Tag, Trash2, CheckCircle2, Circle, AlertCircle,
-  HelpCircle,
+  Pencil, Rss, Save, Search, Star, Tag, Trash2,
 } from 'lucide-react'
 import type {
-  BlogDoc, BlogNode, CheckinStatus, CourseItem, KnowledgeItem, KnowledgeKind,
-  KnowledgeResult, TodayPlan,
+  BlogDoc, BlogNode, CourseItem, KnowledgeItem, KnowledgeKind,
+  KnowledgeResult,
 } from './lib/api'
 import {
-  CATEGORY_LABELS, createBlogFolder, deleteBlogNode, fetchBlogDoc, fetchBlogTree,
-  fetchCheckin, fetchCourses, fetchKnowledge, fetchNote, fetchToday, renameBlogNode,
-  saveBlogDoc, saveCheckin, saveNote, toggleFavorite, updateCourse,
+  createBlogFolder, deleteBlogNode, fetchBlogDoc, fetchBlogTree,
+  fetchCourses, fetchKnowledge, fetchNote, renameBlogNode,
+  saveBlogDoc, saveNote, toggleFavorite, updateCourse,
 } from './lib/api'
-import { interviewQuestions } from './data/interview'
 import { Markdown } from './components/Markdown'
+import { StudyHome } from './components/StudyHome'
+import { PracticePage } from './components/PracticePage'
 
 type View = 'today' | 'knowledge' | 'favorites' | 'blog' | 'courses' | 'practice'
 
 const navItems: Array<{ id: View; label: string; icon: any; hint: string }> = [
-  { id: 'today', label: '今日', icon: CalendarCheck, hint: '计划与打卡' },
+  { id: 'today', label: '学习与交流', icon: CalendarCheck, hint: '近况 · 问题 · AI 建议' },
   { id: 'knowledge', label: '知识', icon: BookOpen, hint: '论文 · 新闻 · 博客' },
   { id: 'favorites', label: '收藏', icon: Star, hint: '重点条目' },
-  { id: 'blog', label: '博客', icon: PenLine, hint: '笔记与知识库' },
+  { id: 'blog', label: '文档', icon: PenLine, hint: '笔记与知识库' },
   { id: 'courses', label: '课程', icon: GraduationCap, hint: '课程与资料' },
   { id: 'practice', label: '练习', icon: Code2, hint: '面经与编码' },
 ]
@@ -36,11 +36,6 @@ const KIND_META: Record<KnowledgeKind, { label: string; icon: any }> = {
   blog: { label: '博客', icon: Rss },
 }
 const KIND_ORDER: Array<KnowledgeKind | 'all'> = ['all', 'paper', 'news', 'blog']
-
-const STATUS_ICON: Record<CheckinStatus, any> = {
-  done: CheckCircle2, partial: AlertCircle, todo: Circle, blocked: HelpCircle,
-}
-const STATUS_ORDER: CheckinStatus[] = ['done', 'partial', 'todo', 'blocked']
 
 export default function App() {
   const [view, setView] = useState<View>('today')
@@ -87,189 +82,20 @@ export default function App() {
         </nav>
         <div className="sidebar-foot">
           <div><Lightbulb size={14} /><span>数据来自 DailyImprove</span></div>
-          <p>打卡会同时写入数据库与 plan/daily/ 日报</p>
+          <p>记录近况，与 AI 一起调整方向</p>
         </div>
       </aside>
       <main className="main">
-        {view === 'today' && <TodayPage />}
+        <nav className="mobile-study-nav" aria-label="学习导航">
+          {navItems.map(({ id, label }) => <button key={id} className={view === id ? 'active' : ''} onClick={() => setView(id)}>{label}</button>)}
+        </nav>
+        <div hidden={view !== 'today'}><StudyHome onDocument={(path) => { setBlogTarget(path ?? null); setView('blog') }} /></div>
         {view === 'knowledge' && <KnowledgePage onNote={openNote} />}
         {view === 'favorites' && <KnowledgePage favoriteOnly onNote={openNote} />}
         {view === 'blog' && <BlogPage target={blogTarget} onTargetOpened={() => setBlogTarget(null)} />}
         {view === 'courses' && <CoursesPage />}
-        {view === 'practice' && <PracticePage />}
+        <div hidden={view !== 'practice'}><PracticePage onDocument={(path) => { setBlogTarget(path); setView('blog') }} /></div>
       </main>
-    </div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/* 今日：计划 + 打卡（落盘到数据库与 md）                                */
-/* ------------------------------------------------------------------ */
-
-interface Row {
-  category: string
-  title: string
-  status: CheckinStatus
-  note: string
-}
-
-function TodayPage() {
-  const [plan, setPlan] = useState<TodayPlan | null>(null)
-  const [rows, setRows] = useState<Row[]>([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [msg, setMsg] = useState('')
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [t, c] = await Promise.all([fetchToday(), fetchCheckin()])
-      setPlan(t)
-      // 以日报 md 的打卡清单为骨架，用数据库里已存的状态/说明覆盖
-      const saved = new Map(c.items.map((i) => [i.category, i]))
-      const merged: Row[] = (t.checklist.length ? t.checklist : []).map((cl) => {
-        const cat = matchCategory(cl.text)
-        const s = saved.get(cat)
-        return {
-          category: cat,
-          title: cl.text,
-          status: s?.status ?? cl.status,
-          note: s?.note ?? '',
-        }
-      })
-      setRows(merged.length ? merged : defaultRows())
-    } catch (e) {
-      setMsg(`加载失败：${(e as Error).message}`)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { load() }, [load])
-
-  const patch = (category: string, next: Partial<Row>) =>
-    setRows((cur) => cur.map((r) => (r.category === category ? { ...r, ...next } : r)))
-
-  const persist = async () => {
-    if (!plan) return
-    setSaving(true)
-    setMsg('')
-    try {
-      const res = await saveCheckin(plan.date, rows.map((r) => ({
-        category: r.category, title: r.title, status: r.status, note: r.note,
-      })))
-      setMsg(res.md_written
-        ? `已保存，并回写 ${res.md_file}`
-        : '已存入数据库（日报文件未找到，未回写 md）')
-    } catch (e) {
-      setMsg(`保存失败：${(e as Error).message}`)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (loading) return <Centered><Loader2 className="spin" size={26} /><p>加载今日计划…</p></Centered>
-
-  const date = plan?.date ?? new Date().toISOString().slice(0, 10)
-
-  return (
-    <div className="page">
-      <header className="page-head">
-        <div>
-          <p className="eyebrow">{date} · 今日计划与打卡</p>
-          <h1>今天做到哪一步</h1>
-        </div>
-        <button className="primary-button" onClick={persist} disabled={saving}>
-          {saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}
-          {saving ? '保存中' : '保存打卡'}
-        </button>
-      </header>
-
-      {msg && <div className="toast">{msg}</div>}
-
-      {plan?.commit && (
-        <section className="card brief ghost">
-          <h3><ChevronRight size={15} /> 昨日承诺</h3>
-          <Markdown text={plan.commit} />
-        </section>
-      )}
-
-      {plan?.summary && (
-        <section className="card brief">
-          <h3><Lightbulb size={15} /> 昨日结果</h3>
-          <Markdown text={plan.summary} />
-        </section>
-      )}
-
-      <section className="card">
-        <h3>今日三件事</h3>
-        {plan?.plan_table?.rows?.length ? (
-          <div className="plan-cards">
-            {plan.plan_table.rows.map((cells, i) => (
-              <article className="plan-card" key={i}>
-                {cells.map((cell, j) => (
-                  <div className="plan-cell" key={j}>
-                    <span className="plan-label">
-                      {plan.plan_table.headers[j] ?? ''}
-                    </span>
-                    <Markdown inline text={cell} />
-                  </div>
-                ))}
-              </article>
-            ))}
-          </div>
-        ) : plan?.plan_raw ? (
-          <Markdown text={plan.plan_raw} />
-        ) : (
-          <p className="card-sub">今天的日报还没有生成计划。</p>
-        )}
-      </section>
-
-      <section className="card">
-        <h3>打卡</h3>
-        <p className="card-sub">
-          四档状态：<code>[x]</code> 已完成 · <code>[!]</code> 部分完成（跨天延续）·{' '}
-          <code>[ ]</code> 未做 · <code>[?]</code> 卡住。说明会一并写进日报。
-        </p>
-        <div className="checkin-list">
-          {rows.map((r) => (
-            <div key={r.category} className={`checkin-row ${r.status}`}>
-              <div className="checkin-main">
-                <span className="checkin-tag">{CATEGORY_LABELS[r.category] ?? r.category}</span>
-                <Markdown inline className="checkin-title" text={stripMarks(r.title)} />
-              </div>
-              <div className="status-group">
-                {STATUS_ORDER.map((s) => {
-                  const SI = STATUS_ICON[s]
-                  return (
-                    <button
-                      key={s}
-                      className={`status-btn ${s} ${r.status === s ? 'on' : ''}`}
-                      onClick={() => patch(r.category, { status: s })}
-                      title={s}
-                    >
-                      <SI size={14} />
-                    </button>
-                  )
-                })}
-              </div>
-              <textarea
-                className="checkin-note"
-                placeholder="特殊说明 / 卡点（会写入日报）"
-                value={r.note}
-                onChange={(e) => patch(r.category, { note: e.target.value })}
-              />
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {plan?.tomorrow && (
-        <section className="card brief alt">
-          <h3><ChevronRight size={15} /> 明日预告</h3>
-          <Markdown text={plan.tomorrow} />
-        </section>
-      )}
     </div>
   )
 }
@@ -430,7 +256,7 @@ function KnowledgePage({
                         <button
                           type="button"
                           className="icon-btn"
-                          title="写笔记（存到博客）"
+                          title="写笔记（存到文档区）"
                           onClick={(e) => { e.stopPropagation(); onNote(it) }}
                         >
                           <PenLine size={14} />
@@ -726,7 +552,7 @@ function BlogPage({ target, onTargetOpened }: { target: string | null; onTargetO
       <header className="page-head">
         <div>
           <p className="eyebrow">本地 md 文档树 · blog/ 目录即事实来源</p>
-          <h1>我的博客</h1>
+          <h1>我的文档</h1>
         </div>
         <div className="filters">
           <button type="button" className="ghost-btn" onClick={() => { setCreating('file'); setNewPath('') }}>
@@ -992,92 +818,9 @@ function CoursesPage() {
 }
 
 /* ------------------------------------------------------------------ */
-/* 练习：面经自测                                                       */
-/* ------------------------------------------------------------------ */
-
-function PracticePage() {
-  const [idx, setIdx] = useState(0)
-  const [picked, setPicked] = useState<number | null>(null)
-  const [revealed, setRevealed] = useState(false)
-  const q = interviewQuestions[idx]
-
-  const next = () => {
-    setIdx((i) => (i + 1) % interviewQuestions.length)
-    setPicked(null); setRevealed(false)
-  }
-
-  return (
-    <div className="page">
-      <header className="page-head">
-        <div>
-          <p className="eyebrow">面经自测 · 第 {idx + 1} / {interviewQuestions.length} 题</p>
-          <h1>练习</h1>
-        </div>
-      </header>
-
-      <section className="card quiz">
-        <div className="quiz-meta">
-          <span className="quiz-tag">{q.topic}</span>
-          <span className="quiz-diff">{q.difficulty}</span>
-        </div>
-        <h3>{q.title}</h3>
-        {q.context && <p className="quiz-context">{q.context}</p>}
-
-        <div className="quiz-options">
-          {q.options.map((o, i) => (
-            <button
-              key={i}
-              className={`quiz-opt ${picked === i ? 'picked' : ''} ${revealed && i === q.answer ? 'right' : ''} ${revealed && picked === i && i !== q.answer ? 'wrong' : ''}`}
-              onClick={() => !revealed && setPicked(i)}
-              disabled={revealed}
-            >
-              <b>{String.fromCharCode(65 + i)}</b>{o}
-            </button>
-          ))}
-        </div>
-
-        <div className="quiz-actions">
-          <button className="primary-button" onClick={() => setRevealed(true)} disabled={picked === null || revealed}>
-            提交
-          </button>
-          <button className="text-button" onClick={next}>下一题 <ChevronRight size={14} /></button>
-        </div>
-
-        {revealed && (
-          <div className="quiz-explain">
-            <p><strong>答案 {String.fromCharCode(65 + q.answer)}</strong></p>
-            <p>{q.explain}</p>
-          </div>
-        )}
-      </section>
-    </div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
 /* 公共小组件与工具                                                      */
 /* ------------------------------------------------------------------ */
 
 function Centered({ children }: { children: React.ReactNode }) {
   return <div className="centered">{children}</div>
-}
-
-/** 把 md 的打卡行文本映射到分类 */
-function matchCategory(text: string): string {
-  for (const [cat, label] of Object.entries(CATEGORY_LABELS)) {
-    if (text.startsWith(label)) return cat
-  }
-  return text.slice(0, 10) || 'other'
-}
-
-/** 去掉 md 里未填写的占位下划线 */
-function stripMarks(text: string): string {
-  return text.replace(/[_—–]+/g, '…').trim()
-}
-
-/** 日报不存在时的默认打卡骨架 */
-function defaultRows(): Row[] {
-  return Object.entries(CATEGORY_LABELS).map(([category, title]) => ({
-    category, title, status: 'todo' as CheckinStatus, note: '',
-  }))
 }

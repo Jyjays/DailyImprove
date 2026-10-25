@@ -13,6 +13,9 @@ from app.utils.logger import logger
 from app.web.api import router as api_router
 from app.web.blog_api import router as blog_router
 from app.web.study_api import router as study_router
+from app.web.context_api import initialize_context, router as context_router
+from app.practice import initialize_practice
+from app.web.practice_api import router as practice_router
 from app.web.ui import router as ui_router
 
 
@@ -23,6 +26,8 @@ async def lifespan(app: FastAPI):
     session = SessionLocal()
     try:
         sync_all_modules(session)
+        initialize_practice(session)
+        initialize_context(session)
     finally:
         session.close()
     scheduler_manager.start()
@@ -45,4 +50,6 @@ app.add_middleware(
 app.include_router(ui_router)
 app.include_router(api_router)
 app.include_router(study_router)
+app.include_router(context_router)
+app.include_router(practice_router)
 app.include_router(blog_router)
